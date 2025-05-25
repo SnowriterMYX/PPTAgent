@@ -121,20 +121,9 @@ class Table(Media):
 
     def parse_table(self, image_dir: str):
         html = markdown(self.markdown_content)
-        soup = BeautifulSoup(html, "html.parser")
-        table = soup.find("table")
-        self.cells = []
-        for row in table.find_all("tr"):
-            self.cells.append(
-                [cell.text for cell in row.find_all("td") + row.find_all("th")]
-            )
-        for i in range(len(self.cells)):
-            row = self.cells[i]
-            unstacked = row[0].split("\n")
-            if len(unstacked) == len(row) and all(
-                cell.strip() == "" for cell in row[1:]
-            ):
-                self.cells[i] = unstacked
+        cells, merges = parse_table_with_merges(html)
+        self.cells = cells
+        self.merge_area = merges
 
         if self.path is None:
             self.path = pjoin(
@@ -196,6 +185,73 @@ class Table(Media):
                 )
             )
             logger.debug(f"Caption: {self.caption}")
+
+
+def parse_table_with_merges(
+    html: str,
+) -> tuple[list[list[str]], list[tuple[int, int, int, int]]]:
+    """parse table in html with merge cell
+
+    Args:
+        html (str)
+
+    Returns:
+        cell_and_merge (cell: list[list[str]], merges: list[(x0: int, y0: int, x1: int, y1: int)])
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    # 计算表格最大行列
+    rows = table.find_all("tr")
+    max_row = 0
+    col_counter = []
+    for row_idx, row in enumerate(rows):
+        col_span_sum = 0
+        for cell in row.find_all(["td", "th"]):
+            row_span = int(cell.get("rowspan", 1))
+            col_span = int(cell.get("colspan", 1))
+            max_row = max(max_row, row_idx + row_span)
+            col_span_sum += col_span
+        col_counter.append(col_span_sum)
+    max_col = max(col_counter) if col_counter else 0
+
+    # 初始化数据容器
+    grid = [["" for _ in range(max_col)] for _ in range(max_row)]
+    occupied = [[False for _ in range(max_col)] for _ in range(max_row)]
+    merges = []
+
+    # 主解析逻辑
+    for row_idx, row in enumerate(rows):
+        col_idx = 0
+        for cell in row.find_all(["td", "th"]):
+            # 跳过已占用的列
+            while col_idx < max_col and occupied[row_idx][col_idx]:
+                col_idx += 1
+            if col_idx >= max_col:
+                break
+
+            # 解析单元格属性
+            row_span = int(cell.get("rowspan", 1))
+            col_span = int(cell.get("colspan", 1))
+            cell_value = cell.get_text(strip=True)
+
+            # 记录合并范围 (闭区间)
+            x0, y0 = row_idx, col_idx
+            x1 = min(row_idx + row_span - 1, max_row - 1)
+            y1 = min(col_idx + col_span - 1, max_col - 1)
+            if not (x0 == x1 and y0 == y1):
+                merges.append((x0, y0, x1, y1))
+
+            # 填充左上角单元格
+            grid[x0][y0] = cell_value
+
+            # 标记被合并区域
+            for r in range(x0, x1 + 1):
+                for c in range(y0, y1 + 1):
+                    if r < max_row and c < max_col:
+                        occupied[r][c] = True
+
+            col_idx += col_span  # 移动到下一列
+    return grid, merges
 
 
 @dataclass

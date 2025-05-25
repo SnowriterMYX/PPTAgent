@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 import json_repair
 import Levenshtein
+from bs4 import BeautifulSoup
 from html2image import Html2Image
 from mistune import html as markdown
 from pdf2image import convert_from_path
@@ -283,6 +284,10 @@ def markdown_table_to_image(markdown_text: str, output_path: str):
     """
     html = markdown(markdown_text)
     assert "table" in html, "Failed to find table in markdown"
+
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    html = f"<html><body>{''.join(str(table) for table in tables)}</body></html>"
 
     parent_dir, basename = os.path.split(output_path)
     hti = Html2Image(

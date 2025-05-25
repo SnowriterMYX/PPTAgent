@@ -1,15 +1,15 @@
-import json
+import asyncio
 import os
+import zipfile
 from copy import deepcopy
+from io import BytesIO
 from typing import Optional
 
+import aiofiles
+import aiohttp
 import numpy as np
 import torch
 import torchvision.transforms as T
-from marker.config.parser import ConfigParser
-from marker.converters.pdf import PdfConverter
-from marker.models import create_model_dict
-from marker.output import text_from_rendered
 from PIL import Image
 from transformers import AutoModel, AutoProcessor
 
@@ -18,6 +18,7 @@ from pptagent.presentation import Presentation, SlidePage
 from pptagent.utils import get_logger, is_image_path, pjoin
 
 logger = get_logger(__name__)
+mineru_api = os.environ.get("MINERU_API", None)
 
 
 class ModelManager:
@@ -42,7 +43,6 @@ class ModelManager:
         if text_model_name is None:
             text_model_name = os.environ.get("TEXT_MODEL", "text-embedding-3-small")
         self._image_model = None
-        self._marker_model = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.language_model = AsyncLLM(language_model_name, api_base)
@@ -54,14 +54,6 @@ class ModelManager:
         if self._image_model is None:
             self._image_model = get_image_model(device=self.device)
         return self._image_model
-
-    @property
-    def marker_model(self):
-        if self._marker_model is None:
-            self._marker_model = create_model_dict(
-                device=self.device, dtype=torch.float16
-            )
-        return self._marker_model
 
     async def test_connections(self) -> bool:
         """Test connections for all LLM models
@@ -134,45 +126,39 @@ def get_image_model(device: str = None):
     )
 
 
-def parse_pdf(
-    pdf_path: str,
-    output_path: str,
-    model_lst: list,
-) -> str:
+async def parse_pdf(pdf_path: str, output_path: str):
     """
     Parse a PDF file and extract text and images.
 
     Args:
         pdf_path (str): The path to the PDF file.
         output_path (str): The directory to save the extracted content.
-        model_lst (list): A list of models for processing the PDF.
-
-    Returns:
-        str: The full text extracted from the PDF.
     """
     os.makedirs(output_path, exist_ok=True)
-    config_parser = ConfigParser(
-        {
-            "output_format": "markdown",
-        }
-    )
-    converter = PdfConverter(
-        config=config_parser.generate_config_dict(),
-        artifact_dict=model_lst,
-        processor_list=config_parser.get_processors(),
-        renderer=config_parser.get_renderer(),
-    )
-    rendered = converter(pdf_path)
-    full_text, _, images = text_from_rendered(rendered)
-    with open(pjoin(output_path, "source.md"), "w+", encoding="utf-8") as f:
-        f.write(full_text)
-    for filename, image in images.items():
-        image_filepath = os.path.join(output_path, filename)
-        image.save(image_filepath, "JPEG")
-    with open(pjoin(output_path, "meta.json"), "w+", encoding="utf-8") as f:
-        f.write(json.dumps(rendered.metadata, indent=4))
+    async with aiofiles.open(pdf_path, "rb") as f:
+        pdf_data = await f.read()
 
-    return full_text
+    async with aiohttp.ClientSession() as session:
+        form_data = aiohttp.FormData()
+        form_data.add_field(
+            name="pdf",
+            value=pdf_data,
+            filename=os.path.basename(pdf_path),
+            content_type="application/pdf",
+        )
+
+        async with session.post(mineru_api, data=form_data) as response:
+            if response.status != 200:
+                raise Exception(f"HTTP Error: {response.status}")
+
+            zip_data = await response.read()
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: extract_zip(zip_data, output_path))
+
+    def extract_zip(zip_content, output_path):
+        with zipfile.ZipFile(BytesIO(zip_content)) as zip_ref:
+            zip_ref.extractall(output_path)
 
 
 def get_image_embedding(

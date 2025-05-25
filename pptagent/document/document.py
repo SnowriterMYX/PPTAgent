@@ -29,7 +29,9 @@ SECTION_SUMMARY_PROMPT = env.from_string(
 )
 
 MARKDOWN_IMAGE_REGEX = re.compile(r"!\[.*\]\(.*\)")
-MARKDOWN_TABLE_REGEX = re.compile(r"\|.*\|")
+MARKDOWN_TABLE_REGEX = re.compile(
+    r"(\|.*\|)|((<html><body>)?<table>.*</table>(</body></html>)?)"
+)
 
 
 def split_markdown_by_headings(

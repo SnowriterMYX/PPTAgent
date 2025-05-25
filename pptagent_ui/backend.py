@@ -43,7 +43,6 @@ STAGES = [
     "Success!",
 ]
 
-
 models = ModelManager()
 
 
@@ -271,13 +270,9 @@ async def ppt_gen(task_id: str, rerun=False):
 
         # pdf parsing
         if not os.path.exists(pjoin(parsedpdf_dir, "source.md")):
-            text_content = parse_pdf(
-                pjoin(RUNS_DIR, "pdf", pdf_md5, "source.pdf"),
-                parsedpdf_dir,
-                models.marker_model,
-            )
-        else:
-            text_content = open(pjoin(parsedpdf_dir, "source.md")).read()
+            source_file = pjoin(RUNS_DIR, "pdf", pdf_md5, "source.pdf")
+            await parse_pdf(source_file, parsedpdf_dir)
+        text_content = open(pjoin(parsedpdf_dir, "source.md")).read()
         await progress.report_progress()
 
         # document refine
