@@ -2,8 +2,6 @@ import asyncio
 import os
 import re
 from contextlib import AsyncExitStack
-from contextvars import ContextVar
-from typing import Literal, Optional
 
 from jinja2 import Environment, StrictUndefined
 from pydantic import BaseModel, Field, create_model
@@ -37,27 +35,14 @@ MERGE_METADATA_PROMPT = env.from_string(
 LITERAL_CONSTRAINT = os.getenv("LITERAL_CONSTRAINT", "false").lower() == "true"
 
 
-class DocumentIndex(BaseModel):
-    section: str
-    subsections: list[str]
-
-    @classmethod
-    def response_model(cls, section_fields: list[str], subsection_fields: list[str]):
-        return create_model(
-            cls.__name__,
-            section=(Literal[tuple(section_fields)], Field(...)),  # type: ignore
-            subsections=(list[Literal[tuple(subsection_fields)]], Field(...)),  # type: ignore
-            __base__=BaseModel,
-        )
-
-
 class Document(BaseModel):
     image_dir: str
     language: Language
     metadata: dict[str, str]
     sections: list[Section]
 
-    def validate_medias(self, image_dir: Optional[str] = None):
+    def validate_medias(self, image_dir: str | None = None):
+        """Validate and fix media file paths"""
         if image_dir is not None:
             self.image_dir = image_dir
         assert pexists(
@@ -72,15 +57,36 @@ class Document(BaseModel):
             else:
                 raise FileNotFoundError(f"image file not found: {media.path}")
 
+    def get_overview(self, include_summary: bool = False, include_image: bool = True):
+        """Get document overview with sections and subsections"""
+        overview = ""
+        for section in self.sections:
+            overview += f"<section>{section.title}</section>\n"
+            if include_summary:
+                overview += f"\tSummary: {section.summary}\n"
+            for subsection in section.content:
+                if isinstance(subsection, SubSection):
+                    overview += f"\t<subsection>{subsection.title}</subsection>\n"
+                elif include_image and isinstance(subsection, Media):
+                    overview += (
+                        f"\t<image>{subsection.path}</image>: {subsection.caption}\n"
+                    )
+            overview += "\n"
+        return overview
+
     def iter_medias(self):
+        """Iterate over all media items in the document"""
         for section in self.sections:
             yield from section.iter_medias()
 
-    def get_table(self, image_path: str):
+    def find_media(self, caption: str | None = None, path: str | None = None):
+        """Find media by caption or path"""
         for media in self.iter_medias():
-            if media.path == image_path and isinstance(media, Table):
+            if caption is not None and media.caption == caption:
                 return media
-        raise ValueError(f"table not found: {image_path}")
+            if path is not None and media.path == path:
+                return media
+        raise ValueError(f"Image caption or path not found: {caption} or {path}")
 
     @classmethod
     async def _parse_chunk(
@@ -119,7 +125,7 @@ class Document(BaseModel):
         language_model: AsyncLLM,
         vision_model: AsyncLLM,
         image_dir: str,
-        max_at_once: Optional[int] = None,
+        max_at_once: int | None = None,
     ):
         doc_extractor = Agent(
             "doc_extractor",
@@ -178,105 +184,60 @@ class Document(BaseModel):
             sections=sections,
         )
 
+    def index(self, target_item: SubSection | Media | Table):
+        """Get the index position of a content item"""
+        for i, (_, content) in enumerate(self):
+            if content is target_item:
+                return i
+        raise ValueError("Item not found in document")
+
+    def pop(self, index: int):
+        """Remove and return content item at specified index position"""
+        for idx, (section, content) in enumerate(self):
+            if idx == index:
+                return section.content.pop(section.content.index(content))
+        raise IndexError("Index out of range")
+
+    def insert(self, item: SubSection | Media | Table, target_index: int):
+        """Insert content item after the specified index position"""
+        for idx, (section, content) in enumerate(self):
+            if idx == target_index:
+                section.content.insert(section.content.index(content), item)
+                return
+
+        self.sections[-1].content.append(item)
+
+    def remove(self, target_item: SubSection | Media | Table):
+        """Remove content item from document"""
+        for section, content in self:
+            if content is target_item:
+                section.content.remove(target_item)
+                return
+        raise ValueError("Item not found in document")
+
     def __contains__(self, key: str):
         for section in self.sections:
             if section.title == key:
                 return True
         return False
 
-    def __getitem__(self, key: str):
+    def __iter__(self):
         for section in self.sections:
-            if section.title == key:
-                return section
-        raise KeyError(
-            f"section not found: {key}, available sections: {[section.title for section in self.sections]}"
-        )
+            for content in section.content:
+                yield section, content
 
-    def find_caption(self, caption: str):
-        for media in self.iter_medias():
-            if media.caption == caption:
-                return media.path
-        raise ValueError(f"Image caption not found: {caption}")
-
-    def get_overview(self, include_summary: bool = False, include_image: bool = True):
-        overview = ""
-        for section in self.sections:
-            overview += f"<section>{section.title}</section>\n"
-            if include_summary:
-                overview += f"\tSummary: {section.summary}\n"
-            for subsection in section.content:
-                if isinstance(subsection, SubSection):
-                    overview += f"\t<subsection>{subsection.title}</subsection>\n"
-                elif include_image and isinstance(subsection, Media):
-                    overview += f"\t<image>{subsection.caption}</image>\n"
-            overview += "\n"
-        return overview
+    def __getitem__(self, key: int | slice | str):
+        """Get content item by index, slice or section title"""
+        if isinstance(key, slice):
+            return [content for _, content in list(self)[key]]
+        else:
+            for i, (sec, content) in enumerate(self):
+                if i == key:
+                    return content
+                elif sec.title == key:
+                    return sec
+            raise IndexError(f"Index out of range: {key}")
 
     @property
     def metainfo(self):
         return "\n".join([f"{k}: {v}" for k, v in self.metadata.items()])
-
-
-_allowed_images: ContextVar[list[str]] = ContextVar("allowed_images", default=[])
-_allowed_indexs: ContextVar[dict[str, list[str]]] = ContextVar(
-    "allowed_indexs", default={}
-)
-
-
-class OutlineItem(BaseModel):
-    purpose: str
-    section: str
-    indexes: list[DocumentIndex] | str
-    images: list[str] = Field(default_factory=list)
-
-    def retrieve(self, slide_idx: int, document: Document):
-        subsections = []
-        for index in self.indexes:
-            for subsection in index.subsections:
-                subsections.append(document[index.section][subsection])
-        header = f"Current Slide: {self.purpose}\n"
-        header += f"This is the {slide_idx+1} slide of the presentation.\n"
-        content = ""
-        for subsection in subsections:
-            content += f"Paragraph: {subsection.title}\nContent: {subsection.content}\n"
-        images = [
-            f"<path>{document.find_caption(caption)}</path>: {caption}"
-            for caption in self.images
-        ]
-        return header, content, images
-
-    @classmethod
-    def response_model(cls, allowed_images: list[str], document: Document):
-        # Set context variables for post-processing
-        _allowed_images.set(allowed_images)
-        sections = []
-        subsections = []
-        for sec in document.sections:
-            sections.append(sec.title)
-            for subsec in sec.content:
-                if isinstance(subsec, SubSection):
-                    subsections.append(subsec.title)
-
-        return create_model(
-            cls.__name__,
-            purpose=(str, Field(...)),
-            section=(str, Field(...)),
-            images=(list[Literal[tuple(allowed_images)]], Field(...)),  # type: ignore
-            indexes=(list[DocumentIndex.response_model(sections, subsections)], Field(...)),  # type: ignore
-            __base__=BaseModel,
-        )
-
-
-class Outline(BaseModel):
-    outline: list[OutlineItem]
-
-    @classmethod
-    def response_model(cls, allowed_images: list[str], document: Document):
-        return create_model(
-            cls.__name__,
-            outline=(
-                list[OutlineItem.response_model(allowed_images, document)],
-                Field(...),
-            ),
-            __base__=BaseModel,
-        )
