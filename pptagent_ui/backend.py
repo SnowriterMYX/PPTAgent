@@ -9,8 +9,10 @@ import uuid
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
     File,
@@ -32,8 +34,26 @@ from pptagent.multimodal import ImageLabler
 from pptagent.presentation import Presentation
 from pptagent.utils import Config, get_logger, package_join, pjoin, ppt_to_images_async
 
+# 加载环境变量
+# 首先尝试从当前目录加载 .env 文件
+env_paths = [
+    Path.cwd() / ".env",  # 当前工作目录
+    Path(__file__).parent.parent / ".env",  # 项目根目录
+    Path(__file__).parent / ".env",  # UI目录
+]
+
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ 已加载环境变量文件: {env_path}")
+        break
+else:
+    # 如果没有找到 .env 文件，尝试加载默认位置
+    load_dotenv()
+    print("⚠️  未找到 .env 文件，使用系统环境变量")
+
 # constants
-DEBUG = True if len(sys.argv) == 1 else False
+DEBUG = os.environ.get("DEBUG", "true").lower() == "true" if len(sys.argv) == 1 else False
 RUNS_DIR = package_join("runs")
 STAGES = [
     "PPT Parsing",
@@ -43,14 +63,24 @@ STAGES = [
     "Success!",
 ]
 
-
+# 初始化模型管理器
 models = ModelManager()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    assert await models.test_connections(), "Model connection test failed"
+    # 测试模型连接，但不强制要求成功（开发模式）
+    print("🚀 启动PPTAgent后端服务...")
+    connection_ok = await models.test_connections()
+    if connection_ok:
+        print("✅ 所有模型连接测试通过")
+    else:
+        print("⚠️  模型连接测试失败，但继续启动（开发模式）")
+        print("📝 请检查 .env 文件中的API配置")
+        print("💡 您可以稍后在界面中测试模型连接")
+
     yield
+    print("👋 PPTAgent后端服务已停止")
 
 
 # server
@@ -204,7 +234,8 @@ async def ppt_gen(task_id: str, rerun=False):
     if rerun:
         task_id = task_id.replace("|", "/")
         active_connections[task_id] = None
-        progress_store[task_id] = json.load(open(pjoin(RUNS_DIR, task_id, "task.json")))
+        with open(pjoin(RUNS_DIR, task_id, "task.json"), "r", encoding="utf-8") as f:
+            progress_store[task_id] = json.load(f)
 
     # Wait for WebSocket connection
     for _ in range(100):
@@ -220,7 +251,7 @@ async def ppt_gen(task_id: str, rerun=False):
     pdf_md5 = task["pdf"]
     generation_config = Config(pjoin(RUNS_DIR, task_id))
     pptx_config = Config(pjoin(RUNS_DIR, "pptx", pptx_md5))
-    json.dump(task, open(pjoin(generation_config.RUN_DIR, "task.json"), "w"))
+    json.dump(task, open(pjoin(generation_config.RUN_DIR, "task.json"), "w", encoding="utf-8"), ensure_ascii=False)
     progress = ProgressManager(task_id, STAGES)
     parsedpdf_dir = pjoin(RUNS_DIR, "pdf", pdf_md5)
     ppt_image_folder = pjoin(pptx_config.RUN_DIR, "slide_images")
@@ -296,13 +327,31 @@ async def ppt_gen(task_id: str, rerun=False):
             )
             json.dump(
                 source_doc.to_dict(),
-                open(pjoin(parsedpdf_dir, "refined_doc.json"), "w"),
+                open(pjoin(parsedpdf_dir, "refined_doc.json"), "w", encoding="utf-8"),
                 ensure_ascii=False,
                 indent=4,
             )
         else:
-            source_doc = json.load(open(pjoin(parsedpdf_dir, "refined_doc.json")))
-            source_doc = Document.from_dict(source_doc, parsedpdf_dir)
+            try:
+                with open(pjoin(parsedpdf_dir, "refined_doc.json"), "r", encoding="utf-8") as f:
+                    source_doc = json.load(f)
+                source_doc = Document.from_dict(source_doc, parsedpdf_dir)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.error(f"Failed to load refined_doc.json: {e}")
+                # 如果JSON文件损坏，重新生成
+                logger.info("Regenerating document due to corrupted JSON file...")
+                source_doc = await Document.from_markdown_async(
+                    text_content,
+                    models.language_model,
+                    models.vision_model,
+                    parsedpdf_dir,
+                )
+                json.dump(
+                    source_doc.to_dict(),
+                    open(pjoin(parsedpdf_dir, "refined_doc.json"), "w", encoding="utf-8"),
+                    ensure_ascii=False,
+                    indent=4,
+                )
         await progress.report_progress()
 
         # Slide Induction

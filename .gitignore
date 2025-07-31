@@ -15,6 +15,11 @@ node_modules
 human_eval
 resource/exemplars
 
+# Environment variables
+.env
+.env.local
+.env.*.local
+
 # Copy from vuejs
 
 # Logs
@@ -41,3 +46,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+venv/

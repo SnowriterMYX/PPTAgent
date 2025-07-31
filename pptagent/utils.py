@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +16,12 @@ import json_repair
 import Levenshtein
 from html2image import Html2Image
 from mistune import html as markdown
-from pdf2image import convert_from_path
+try:
+    from pdf2image import convert_from_path
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
+    logger.warning("pdf2image not available. Please install poppler-utils.")
 from PIL import Image as PILImage
 from pptx.dml.color import RGBColor
 from pptx.oxml import parse_xml
@@ -38,7 +44,22 @@ def get_logger(name="pptagent", level=None):
         logging.Logger: A configured logger instance.
     """
     if level is None:
-        level = int(os.environ.get("LOG_LEVEL", logging.INFO))
+        # 处理日志级别配置，支持字符串和数字
+        log_level = os.environ.get("LOG_LEVEL", "INFO")
+        if isinstance(log_level, str):
+            level_map = {
+                "DEBUG": logging.DEBUG,
+                "INFO": logging.INFO,
+                "WARNING": logging.WARNING,
+                "ERROR": logging.ERROR,
+                "CRITICAL": logging.CRITICAL
+            }
+            level = level_map.get(log_level.upper(), logging.INFO)
+        else:
+            try:
+                level = int(log_level)
+            except (ValueError, TypeError):
+                level = logging.INFO
 
     logger = logging.getLogger(name)
     logger.setLevel(level)
@@ -63,8 +84,39 @@ def get_logger(name="pptagent", level=None):
 
 logger = get_logger(__name__)
 
-if which("soffice") is None:
-    logging.warning("soffice is not installed, pptx to images conversion will not work")
+def get_soffice_command():
+    """
+    获取LibreOffice命令，兼容不同操作系统
+    """
+    # Windows下的可能路径
+    if platform.system() == "Windows":
+        possible_commands = [
+            "soffice",  # 如果已添加到PATH
+            "soffice.exe",
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+            # 便携版路径
+            r".\LibreOffice\program\soffice.exe",
+            r".\LibreOfficePortable\App\libreoffice\program\soffice.exe",
+        ]
+
+        for cmd in possible_commands:
+            if which(cmd) or os.path.exists(cmd):
+                return cmd
+        return None
+    else:
+        # Linux/macOS
+        return which("soffice")
+
+# 检查LibreOffice是否可用
+SOFFICE_CMD = get_soffice_command()
+if SOFFICE_CMD is None:
+    logging.warning("LibreOffice (soffice) is not found. PPT to images conversion will not work.")
+    logging.warning("Please install LibreOffice or add it to your PATH.")
+    if platform.system() == "Windows":
+        logging.warning("Windows users can download LibreOffice from: https://www.libreoffice.org/download/download/")
+else:
+    logging.info(f"Found LibreOffice at: {SOFFICE_CMD}")
 
 # Set of supported image extensions
 IMAGE_EXTENSIONS: set[str] = {
@@ -270,9 +322,42 @@ th {
 
 
 # Convert Markdown to HTML
+def get_chrome_path():
+    """
+    获取Chrome浏览器路径，兼容不同操作系统
+    """
+    if platform.system() == "Windows":
+        possible_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Users\{}\AppData\Local\Google\Chrome\Application\chrome.exe".format(os.getenv("USERNAME", "")),
+            # Edge浏览器作为备选
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        return None
+    elif platform.system() == "Darwin":  # macOS
+        possible_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        return None
+    else:  # Linux
+        for cmd in ["google-chrome", "chromium-browser", "chromium"]:
+            if which(cmd):
+                return cmd
+        return None
+
 def markdown_table_to_image(markdown_text: str, output_path: str):
     """
-    Convert a Markdown table to a cropped image
+    Convert a Markdown table to a cropped image, Windows compatible
 
     Args:
     markdown_text (str): Markdown text containing a table
@@ -285,33 +370,69 @@ def markdown_table_to_image(markdown_text: str, output_path: str):
     assert "table" in html, "Failed to find table in markdown"
 
     parent_dir, basename = os.path.split(output_path)
-    hti = Html2Image(
-        disable_logging=True,
-        output_path=parent_dir,
-        custom_flags=["--no-sandbox", "--headless"],
-    )
-    hti.browser.use_new_headless = None
-    hti.screenshot(html_str=html, css_str=TABLE_CSS, save_as=basename)
 
-    img = PILImage.open(output_path).convert("RGB")
-    bbox = img.getbbox()
-    assert (
-        bbox is not None
-    ), "Failed to capture the bbox, may be markdown table conversion failed"
-    bbox = (0, 0, bbox[2] + 10, bbox[3] + 10)
-    img.crop(bbox).save(output_path)
-    return output_path
+    try:
+        # 尝试获取Chrome路径
+        chrome_path = get_chrome_path()
+
+        if chrome_path:
+            hti = Html2Image(
+                disable_logging=True,
+                output_path=parent_dir,
+                custom_flags=["--no-sandbox", "--headless"],
+                browser_executable=chrome_path
+            )
+        else:
+            logger.warning("Chrome/Chromium not found, using default browser")
+            hti = Html2Image(
+                disable_logging=True,
+                output_path=parent_dir,
+                custom_flags=["--no-sandbox", "--headless"],
+            )
+
+        hti.browser.use_new_headless = None
+        hti.screenshot(html_str=html, css_str=TABLE_CSS, save_as=basename)
+
+        img = PILImage.open(output_path).convert("RGB")
+        bbox = img.getbbox()
+        assert (
+            bbox is not None
+        ), "Failed to capture the bbox, may be markdown table conversion failed"
+        bbox = (0, 0, bbox[2] + 10, bbox[3] + 10)
+        img.crop(bbox).save(output_path)
+        return output_path
+
+    except Exception as e:
+        logger.error(f"Failed to create image from markdown table: {e}")
+        # 创建一个简单的占位符图片
+        img = PILImage.new('RGB', (400, 200), color='white')
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+        draw.text((10, 10), "Table conversion failed", fill='black', font=font)
+        img.save(output_path)
+        return output_path
 
 
 @tenacity_decorator
 def ppt_to_images(file: str, output_dir: str):
+    """
+    将PPT文件转换为图片，兼容Windows系统
+    """
+    if SOFFICE_CMD is None:
+        raise RuntimeError("LibreOffice (soffice) is not available. Please install LibreOffice.")
+
     assert pexists(file), f"File {file} does not exist"
     if pexists(output_dir):
         logger.warning(f"ppt2images: {output_dir} already exists")
     os.makedirs(output_dir, exist_ok=True)
+
     with tempfile.TemporaryDirectory() as temp_dir:
         command_list = [
-            "soffice",
+            SOFFICE_CMD,
             "--headless",
             "--convert-to",
             "pdf",
@@ -319,21 +440,76 @@ def ppt_to_images(file: str, output_dir: str):
             "--outdir",
             temp_dir,
         ]
+
+        # Windows下需要特殊处理路径
+        if platform.system() == "Windows":
+            # 确保路径使用正确的分隔符
+            file = os.path.normpath(file)
+            temp_dir = os.path.normpath(temp_dir)
+            command_list = [
+                SOFFICE_CMD,
+                "--headless",
+                "--convert-to",
+                "pdf",
+                file,
+                "--outdir",
+                temp_dir,
+            ]
+
+        logger.debug(f"Running command: {' '.join(command_list)}")
         process = subprocess.Popen(
-            command_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            command_list,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=(platform.system() == "Windows")  # Windows下使用shell
         )
         out, err = process.communicate()
+
         if process.returncode != 0:
-            raise RuntimeError(f"soffice failed with error: {err.decode()}")
+            raise RuntimeError(f"LibreOffice conversion failed with error: {err.decode()}")
 
         for f in os.listdir(temp_dir):
             if not f.endswith(".pdf"):
                 continue
             temp_pdf = pjoin(temp_dir, f)
-            images = convert_from_path(temp_pdf, dpi=72)
-            for i, img in enumerate(images):
-                img.save(pjoin(output_dir, f"slide_{i+1:04d}.jpg"))
-            return
+
+            if not PDF2IMAGE_AVAILABLE:
+                raise RuntimeError("pdf2image is not available. Please install poppler-utils.")
+
+            try:
+                # Windows下可能需要指定poppler路径
+                if platform.system() == "Windows":
+                    # 尝试常见的poppler路径
+                    poppler_paths = [
+                        r"C:\poppler\Library\bin",
+                        r"C:\Program Files\poppler\bin",
+                        None  # 使用系统PATH
+                    ]
+
+                    images = None
+                    for poppler_path in poppler_paths:
+                        try:
+                            images = convert_from_path(temp_pdf, dpi=72, poppler_path=poppler_path)
+                            break
+                        except Exception as e:
+                            if poppler_path is None:
+                                raise e
+                            continue
+                else:
+                    images = convert_from_path(temp_pdf, dpi=72)
+
+                if images is None:
+                    raise RuntimeError("Failed to convert PDF to images")
+
+                for i, img in enumerate(images):
+                    img.save(pjoin(output_dir, f"slide_{i+1:04d}.jpg"))
+                return
+
+            except Exception as e:
+                logger.error(f"PDF to image conversion failed: {e}")
+                if platform.system() == "Windows":
+                    logger.error("Please ensure poppler is installed. See WINDOWS_SETUP.md for instructions.")
+                raise
 
         raise RuntimeError(
             f"No PDF file was created in the temporary directory: {file}\n"
@@ -344,6 +520,12 @@ def ppt_to_images(file: str, output_dir: str):
 
 @tenacity_decorator
 async def ppt_to_images_async(file: str, output_dir: str):
+    """
+    异步将PPT文件转换为图片，兼容Windows系统
+    """
+    if SOFFICE_CMD is None:
+        raise RuntimeError("LibreOffice (soffice) is not available. Please install LibreOffice.")
+
     assert pexists(file), f"File {file} does not exist"
     if pexists(output_dir):
         logger.debug(f"ppt2images: {output_dir} already exists")
@@ -351,7 +533,7 @@ async def ppt_to_images_async(file: str, output_dir: str):
 
     with tempfile.TemporaryDirectory() as temp_dir:
         command_list = [
-            "soffice",
+            SOFFICE_CMD,
             "--headless",
             "--convert-to",
             "pdf",
@@ -360,22 +542,84 @@ async def ppt_to_images_async(file: str, output_dir: str):
             temp_dir,
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *command_list,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        # Windows下需要特殊处理路径
+        if platform.system() == "Windows":
+            file = os.path.normpath(file)
+            temp_dir = os.path.normpath(temp_dir)
+            command_list = [
+                SOFFICE_CMD,
+                "--headless",
+                "--convert-to",
+                "pdf",
+                file,
+                "--outdir",
+                temp_dir,
+            ]
+
+        logger.debug(f"Running async command: {' '.join(command_list)}")
+
+        if platform.system() == "Windows":
+            # Windows下使用shell模式
+            process = await asyncio.create_subprocess_shell(
+                " ".join(f'"{cmd}"' if " " in cmd else cmd for cmd in command_list),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            # Linux/macOS使用exec模式
+            process = await asyncio.create_subprocess_exec(
+                *command_list,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            raise RuntimeError(f"soffice failed with error: {stderr.decode()}")
+            raise RuntimeError(f"LibreOffice conversion failed with error: {stderr.decode()}")
+
         for f in os.listdir(temp_dir):
             if not f.endswith(".pdf"):
                 continue
             temp_pdf = pjoin(temp_dir, f)
-            images = convert_from_path(temp_pdf, dpi=72)
-            for i, img in enumerate(images):
-                img.save(pjoin(output_dir, f"slide_{i+1:04d}.jpg"))
-            return
+
+            if not PDF2IMAGE_AVAILABLE:
+                raise RuntimeError("pdf2image is not available. Please install poppler-utils.")
+
+            try:
+                # Windows下可能需要指定poppler路径
+                if platform.system() == "Windows":
+                    # 尝试常见的poppler路径
+                    poppler_paths = [
+                        r"C:\path\poppler-24.08.0\Library\bin",  # 用户配置的路径
+                        r"C:\poppler\Library\bin",
+                        r"C:\Program Files\poppler\bin",
+                        None  # 使用系统PATH
+                    ]
+
+                    images = None
+                    for poppler_path in poppler_paths:
+                        try:
+                            images = convert_from_path(temp_pdf, dpi=72, poppler_path=poppler_path)
+                            break
+                        except Exception as e:
+                            if poppler_path is None:
+                                raise e
+                            continue
+                else:
+                    images = convert_from_path(temp_pdf, dpi=72)
+
+                if images is None:
+                    raise RuntimeError("Failed to convert PDF to images")
+
+                for i, img in enumerate(images):
+                    img.save(pjoin(output_dir, f"slide_{i+1:04d}.jpg"))
+                return
+
+            except Exception as e:
+                logger.error(f"PDF to image conversion failed: {e}")
+                if platform.system() == "Windows":
+                    logger.error("Please ensure poppler is installed. See WINDOWS_SETUP.md for instructions.")
+                raise
 
         raise RuntimeError(
             f"No PDF file was created in the temporary directory: {file}\n"
@@ -403,23 +647,53 @@ def parsing_image(image: Image, image_path: str) -> str:
 
 @tenacity_decorator
 def wmf_to_images(blob: bytes, filepath: str):
+    """
+    将WMF格式图片转换为JPG，兼容Windows系统
+    """
+    if SOFFICE_CMD is None:
+        raise RuntimeError("LibreOffice (soffice) is not available. Please install LibreOffice.")
+
     if not filepath.endswith(".jpg"):
         raise ValueError("filepath must end with .jpg")
     dirname = os.path.dirname(filepath)
     basename = os.path.basename(filepath).removesuffix(".jpg")
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        with open(pjoin(temp_dir, f"{basename}.wmf"), "wb") as f:
+        wmf_path = pjoin(temp_dir, f"{basename}.wmf")
+        with open(wmf_path, "wb") as f:
             f.write(blob)
+
         command_list = [
-            "soffice",
+            SOFFICE_CMD,
             "--headless",
             "--convert-to",
             "jpg",
-            pjoin(temp_dir, f"{basename}.wmf"),
+            wmf_path,
             "--outdir",
             dirname,
         ]
-        subprocess.run(command_list, check=True, stdout=subprocess.DEVNULL)
+
+        # Windows下需要特殊处理
+        if platform.system() == "Windows":
+            wmf_path = os.path.normpath(wmf_path)
+            dirname = os.path.normpath(dirname)
+            command_list = [
+                SOFFICE_CMD,
+                "--headless",
+                "--convert-to",
+                "jpg",
+                wmf_path,
+                "--outdir",
+                dirname,
+            ]
+
+        logger.debug(f"Converting WMF: {' '.join(command_list)}")
+        subprocess.run(
+            command_list,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            shell=(platform.system() == "Windows")
+        )
 
     assert pexists(filepath), f"File {filepath} does not exist"
 
@@ -575,7 +849,8 @@ class Config:
         Args:
             rundir (str): The run directory.
         """
-        self.RUN_DIR = rundir
+        # 确保路径使用正确的分隔符
+        self.RUN_DIR = os.path.normpath(rundir)
         self.IMAGE_DIR = pjoin(self.RUN_DIR, "images")
 
         for the_dir in [self.RUN_DIR, self.IMAGE_DIR]:

@@ -53,7 +53,7 @@ For a quick test, use the example in `runs/pdf(pptx)/*/source.pdf(pptx)` to save
     </tr>
     <tr>
       <td rowspan="3"><b>System Requirements</b></td>
-      <td>Tested on Linux and macOS, <b>Windows is not supported</b>.</td>
+      <td>Tested on Linux, macOS, and <b>Windows 10/11</b>. Windows support added with compatibility fixes.</td>
     </tr>
     <tr>
       <td>Minimum 8GB RAM, recommended with CUDA or MPS support for faster presentation analysis.</td>
@@ -96,9 +96,20 @@ docker logs -f pptagent
 
 #### Installation Guide
 
+**Linux/macOS:**
 ```bash
 pip install git+https://github.com/icip-cas/PPTAgent.git
 ```
+
+**Windows:**
+```powershell
+# 推荐先查看Windows安装指南
+# 参考 WINDOWS_SETUP.md 获取详细说明
+
+pip install git+https://github.com/icip-cas/PPTAgent.git
+```
+
+> 🪟 **Windows用户**: 请参考 [WINDOWS_SETUP.md](WINDOWS_SETUP.md) 获取完整的Windows安装指南，包括LibreOffice、Poppler等依赖的安装说明。
 
 #### Usage
 
@@ -115,8 +126,22 @@ pip install git+https://github.com/icip-cas/PPTAgent.git
    vision_model = AsyncLLM(model="gpt-4o-2024-08-06")
    text_embedder = AsyncLLM(model="text-embedding-3-small")
    ```
-   Or use the environment variables:
+   Or use environment variables (recommended for local development):
 
+   **Option 1: Using .env file (推荐本地开发)**
+   ```bash
+   # 复制配置文件模板
+   cp .env.example .env
+
+   # 编辑 .env 文件，填入您的配置
+   # OPENAI_API_KEY=your_key
+   # API_BASE=http://your_service_provider/v1
+   # LANGUAGE_MODEL=Qwen2.5-72B-Instruct-GPTQ-Int4
+   # VISION_MODEL=gpt-4o-2024-08-06
+   # TEXT_MODEL=text-embedding-3-small
+   ```
+
+   **Option 2: Using system environment variables**
    ```bash
    export OPENAI_API_KEY="your_key"
    export API_BASE="http://your_service_provider/v1"
@@ -124,6 +149,8 @@ pip install git+https://github.com/icip-cas/PPTAgent.git
    export VISION_MODEL="gpt-4o-2024-08-06"
    export TEXT_MODEL="text-embedding-3-small"
    ```
+
+   > 📖 详细配置说明请参考 [CONFIG.md](CONFIG.md)
 
 2. **Launch Frontend**
 

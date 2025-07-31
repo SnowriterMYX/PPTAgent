@@ -1,11 +1,13 @@
 import json
 import os
 from copy import deepcopy
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import torch
 import torchvision.transforms as T
+from dotenv import load_dotenv
 from marker.config.parser import ConfigParser
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
@@ -31,8 +33,38 @@ class ModelManager:
         language_model_name: Optional[str] = None,
         vision_model_name: Optional[str] = None,
         text_model_name: Optional[str] = None,
+        env_file: Optional[str] = None,
     ):
-        """Initialize models from environment variables after instance creation"""
+        """Initialize models from environment variables after instance creation
+
+        Args:
+            api_base: API base URL
+            language_model_name: Language model name
+            vision_model_name: Vision model name
+            text_model_name: Text embedding model name
+            env_file: Path to .env file (defaults to .env in current directory)
+        """
+        # 加载 .env 文件
+        if env_file is None:
+            # 查找 .env 文件的位置
+            env_paths = [
+                Path.cwd() / ".env",  # 当前工作目录
+                Path(__file__).parent.parent / ".env",  # 项目根目录
+                Path.cwd() / "pptagent_ui" / ".env",  # UI目录
+            ]
+            for env_path in env_paths:
+                if env_path.exists():
+                    load_dotenv(env_path)
+                    logger.info(f"Loaded environment variables from {env_path}")
+                    break
+            else:
+                # 如果没有找到 .env 文件，尝试加载默认位置
+                load_dotenv()
+        else:
+            load_dotenv(env_file)
+            logger.info(f"Loaded environment variables from {env_file}")
+
+        # 从环境变量获取配置
         if api_base is None:
             api_base = os.environ.get("API_BASE", None)
         if language_model_name is None:
@@ -41,13 +73,17 @@ class ModelManager:
             vision_model_name = os.environ.get("VISION_MODEL", "gpt-4.1")
         if text_model_name is None:
             text_model_name = os.environ.get("TEXT_MODEL", "text-embedding-3-small")
+
         self._image_model = None
         self._marker_model = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.language_model = AsyncLLM(language_model_name, api_base)
-        self.vision_model = AsyncLLM(vision_model_name, api_base)
-        self.text_model = AsyncLLM(text_model_name, api_base)
+        # 获取API密钥
+        api_key = os.environ.get("OPENAI_API_KEY")
+
+        self.language_model = AsyncLLM(language_model_name, api_base, api_key)
+        self.vision_model = AsyncLLM(vision_model_name, api_base, api_key)
+        self.text_model = AsyncLLM(text_model_name, api_base, api_key)
 
     @property
     def image_model(self):
