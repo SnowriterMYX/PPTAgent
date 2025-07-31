@@ -230,12 +230,16 @@ class AsyncLLM(LLM):
             api_key=self.api_key,
             timeout=self.timeout,
         )
-        self.batch = Auto(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            timeout=self.timeout,
-            loglevel=0,
-        )
+        try:
+            self.batch = Auto(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=self.timeout,
+                loglevel=0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize batch client: {e}")
+            self.batch = None
 
     @tenacity_decorator
     async def __call__(
@@ -264,12 +268,16 @@ class AsyncLLM(LLM):
             Union[str, Dict, List, Tuple]: The response from the model.
         """
         if self.use_batch and threading.current_thread() is threading.main_thread():
-            self.batch = Auto(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=self.timeout,
-                loglevel=0,
-            )
+            try:
+                self.batch = Auto(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=self.timeout,
+                    loglevel=0,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize batch client: {e}")
+                self.batch = None
         elif self.use_batch:
             logger.warning(
                 "Warning: AsyncLLM is not running in the main thread, may cause race condition."
@@ -318,12 +326,39 @@ class AsyncLLM(LLM):
             api_key=self.api_key,
             timeout=self.timeout,
         )
-        self.batch = Auto(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            timeout=self.timeout,
-            loglevel=0,
-        )
+        try:
+            self.batch = Auto(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=self.timeout,
+                loglevel=0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize batch client: {e}")
+            self.batch = None
+
+    async def cleanup(self):
+        """
+        清理资源，特别是 batch 客户端
+        """
+        try:
+            if hasattr(self, 'batch') and self.batch is not None:
+                # 尝试优雅关闭 batch 客户端
+                if hasattr(self.batch, 'stop'):
+                    await self.batch.stop()
+                elif hasattr(self.batch, 'close'):
+                    await self.batch.close()
+                self.batch = None
+        except Exception as e:
+            logger.debug(f"清理 batch 客户端时出错: {e}")
+
+        try:
+            if hasattr(self, 'client') and self.client is not None:
+                # 关闭 OpenAI 客户端
+                if hasattr(self.client, 'close'):
+                    await self.client.close()
+        except Exception as e:
+            logger.debug(f"清理 OpenAI 客户端时出错: {e}")
 
     async def test_connection(self) -> bool:
         """

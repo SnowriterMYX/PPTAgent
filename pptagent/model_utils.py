@@ -113,6 +113,31 @@ class ModelManager:
             return False
         return True
 
+    async def cleanup(self):
+        """清理所有模型资源"""
+        try:
+            # 清理 LLM 模型
+            if hasattr(self.language_model, 'cleanup'):
+                await self.language_model.cleanup()
+            if hasattr(self.vision_model, 'cleanup'):
+                await self.vision_model.cleanup()
+            if hasattr(self.text_model, 'cleanup'):
+                await self.text_model.cleanup()
+
+            # 清理图像模型
+            if self._image_model is not None:
+                del self._image_model
+                self._image_model = None
+
+            # 清理 marker 模型
+            if self._marker_model is not None:
+                del self._marker_model
+                self._marker_model = None
+
+            logger.info("模型资源清理完成")
+        except Exception as e:
+            logger.error(f"清理模型资源时出错: {e}")
+
 
 def prs_dedup(
     presentation: Presentation,

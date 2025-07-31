@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import json
 import os
+import signal
 import sys
 import traceback
 import uuid
@@ -66,6 +67,17 @@ STAGES = [
 # 初始化模型管理器
 models = ModelManager()
 
+# 全局变量用于优雅关闭
+shutdown_event = asyncio.Event()
+
+def signal_handler(signum, frame):
+    """处理 Ctrl+C 信号"""
+    print(f"\n🛑 接收到信号 {signum}，正在优雅关闭服务...")
+    shutdown_event.set()
+
+# 注册信号处理器
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -86,7 +98,30 @@ async def lifespan(_: FastAPI):
         print("💡 您可以稍后在界面中测试模型连接")
 
     yield
-    print("👋 PPTAgent后端服务已停止")
+
+    # 优雅关闭处理
+    print("🔄 正在清理资源...")
+    try:
+        # 清理模型资源
+        if hasattr(models, 'cleanup'):
+            await models.cleanup()
+
+        # 等待所有活跃连接关闭
+        if active_connections:
+            print(f"⏳ 等待 {len(active_connections)} 个活跃连接关闭...")
+            for task_id, websocket in list(active_connections.items()):
+                try:
+                    if websocket:
+                        await websocket.close()
+                except Exception as e:
+                    logger.debug(f"关闭WebSocket连接时出错: {e}")
+            active_connections.clear()
+
+        print("✅ 资源清理完成")
+    except Exception as e:
+        logger.error(f"清理资源时出错: {e}")
+    finally:
+        print("👋 PPTAgent后端服务已停止")
 
 
 # server
@@ -451,5 +486,29 @@ async def ppt_gen(task_id: str, rerun=False):
 if __name__ == "__main__":
     import uvicorn
 
-    ip = "0.0.0.0"
-    uvicorn.run(app, host=ip, port=9297)
+    try:
+        ip = "0.0.0.0"
+        print("🚀 启动PPTAgent后端服务...")
+        print(f"🌐 服务地址: http://{ip}:9297")
+        print("📝 使用 Ctrl+C 停止服务")
+        print("=" * 50)
+
+        # 配置 uvicorn 以更好地处理关闭信号
+        uvicorn.run(
+            app,
+            host=ip,
+            port=9297,
+            log_level="info",
+            access_log=True,
+            # 添加优雅关闭配置
+            timeout_keep_alive=5,
+            timeout_graceful_shutdown=10,
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 接收到中断信号，正在停止服务...")
+    except Exception as e:
+        print(f"❌ 服务器启动失败: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print("👋 PPTAgent后端服务已停止")
