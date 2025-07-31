@@ -236,9 +236,11 @@ class Document:
         except Exception as e:
             if retry < 3:
                 logger.info("Retry section with error: %s", str(e))
+                logger.debug("Section data that caused error: %s", section)
                 new_section = await extractor.retry(
                     str(e), traceback.format_exc(), turn_id, retry + 1
                 )
+                logger.debug("Retry generated new section: %s", new_section)
                 return await cls._parse_chunk_async(
                     extractor,
                     language_model,

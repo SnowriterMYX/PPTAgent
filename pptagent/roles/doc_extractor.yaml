@@ -12,7 +12,7 @@ template: |
   Example Output:
   {
       "metadata": {
-          `key`: `value` // leave it empty if no metadata is present
+          "key": "value"
       },
       "title": "Section 1",
       "subsections": [
@@ -22,14 +22,18 @@ template: |
           },
           {
               "title": "Subsection 1.2",
-              "content": "content"
+              "content": "content of subsection 1.2"
           },
           {
               "title": "Subsection 1.3",
-              "content": "content"
+              "content": "content of subsection 1.3"
           }
       ]
   }
+
+  CRITICAL: Each subsection MUST contain exactly two fields: "title" and "content".
+  Do NOT create nested subsections or include "subsections" field within individual subsections.
+  The "subsections" field should only exist at the top level of the section.
 
   Input:
 

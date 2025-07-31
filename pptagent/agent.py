@@ -92,10 +92,21 @@ class Agent:
         self.template = self.env.from_string(self.config["template"])
         self.retry_template = Template(
             """The previous output is invalid, please carefully analyze the traceback and feedback information, correct errors happened before.
+
             feedback:
             {{feedback}}
+
             traceback:
             {{traceback}}
+
+            IMPORTANT: Please ensure your output follows the EXACT same JSON structure as specified in the original template.
+            Pay special attention to the required fields and data types.
+
+            For doc_extractor specifically:
+            - Each subsection MUST have both "title" and "content" fields
+            - Do NOT create nested subsections within subsections
+            - Follow the exact format shown in the original template
+
             Give your corrected output in the same format without including the previous output:
             """
         )

@@ -206,9 +206,18 @@ class SubSection:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]):
+        # 检查是否错误地传入了section结构而不是subsection结构
+        if "subsections" in data and "content" not in data:
+            raise ValueError(
+                f"Invalid subsection structure: received section-like data with 'subsections' field. "
+                f"SubSection requires 'title' and 'content' fields, but got: {list(data.keys())}. "
+                f"This usually indicates the LLM generated nested section structure instead of flat subsection structure."
+            )
+
         assert (
             "title" in data and "content" in data
         ), f"'title' and 'content' keys are required in data dictionary but were not found. Input keys: {list(data.keys())}"
+
         medias = []
         for chunk in data.get("medias", []):
             if (
