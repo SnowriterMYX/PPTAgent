@@ -4,8 +4,8 @@
     <progress :value="progress" max="100" class="progress-bar"></progress>
     <p class="status-message">{{ statusMessage }}</p>
     <a v-if="downloadLink" :href="downloadLink" :download="filename" class="download-link">Download PPTX</a>
-    <input v-model="feedback" placeholder="Enter your feedback with contact information" class="feedback-input" />
-    <button @click="submitFeedback" class="feedback-button">Submit Feedback</button>
+    <input v-model="feedback" placeholder="请输入您的反馈意见和联系方式 / Enter your feedback with contact information" class="feedback-input" />
+    <button @click="submitFeedback" class="feedback-button">提交反馈 / Submit Feedback</button>
   </div>
 </template>
 
@@ -61,17 +61,42 @@ export default {
       }
     },
     async submitFeedback() {
-      if (!this.feedback) {
-        alert('Please enter your feedback with contact information.')
+      if (!this.feedback || this.feedback.trim().length === 0) {
+        alert('请输入您的反馈意见和联系方式。\nPlease enter your feedback with contact information.')
         return
       }
+
+      if (!this.taskId) {
+        alert('任务ID缺失，无法提交反馈。\nTask ID is missing, cannot submit feedback.')
+        return
+      }
+
       try {
-        await this.$axios.post('/api/feedback', { feedback: this.feedback, task_id: this.taskId })
-        this.statusMessage = 'Feedback submitted successfully.'
+        await this.$axios.post('/api/feedback', {
+          feedback: this.feedback.trim(),
+          task_id: this.taskId
+        })
+
+        this.statusMessage = '✅ 反馈提交成功！感谢您的意见。\nFeedback submitted successfully! Thank you for your input.'
         this.feedback = ''
+
+        // 显示成功消息3秒后恢复原状态
+        setTimeout(() => {
+          if (this.statusMessage.includes('反馈提交成功')) {
+            this.statusMessage = 'Success!'
+          }
+        }, 3000)
+
       } catch (error) {
         console.error("Feedback submission error:", error)
-        this.statusMessage = 'Failed to submit feedback.'
+        let errorMsg = '❌ 反馈提交失败。\nFailed to submit feedback.'
+
+        if (error.response && error.response.data && error.response.data.detail) {
+          errorMsg += `\n错误详情: ${error.response.data.detail}`
+        }
+
+        this.statusMessage = errorMsg
+        alert(errorMsg)
       }
     },
     closeSocket() {

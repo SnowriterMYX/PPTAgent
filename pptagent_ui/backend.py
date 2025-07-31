@@ -71,6 +71,12 @@ models = ModelManager()
 async def lifespan(_: FastAPI):
     # 测试模型连接，但不强制要求成功（开发模式）
     print("🚀 启动PPTAgent后端服务...")
+
+    # 创建必要的目录
+    os.makedirs(RUNS_DIR, exist_ok=True)
+    os.makedirs(pjoin(RUNS_DIR, "feedback"), exist_ok=True)
+    print("📁 已创建必要的目录结构")
+
     connection_ok = await models.test_connections()
     if connection_ok:
         print("✅ 所有模型连接测试通过")
@@ -214,12 +220,36 @@ async def download(task_id: str):
 @app.post("/api/feedback")
 async def feedback(request: Request):
     body = await request.json()
-    feedback = body.get("feedback")
+    feedback_text = body.get("feedback")
     task_id = body.get("task_id")
 
-    with open(pjoin(RUNS_DIR, "feedback", f"{task_id}.txt"), "w") as f:
-        f.write(feedback)
-    return {"message": "Feedback submitted successfully"}
+    if not feedback_text or not task_id:
+        raise HTTPException(status_code=400, detail="Feedback and task_id are required")
+
+    # 创建feedback目录
+    feedback_dir = pjoin(RUNS_DIR, "feedback")
+    os.makedirs(feedback_dir, exist_ok=True)
+
+    # 清理task_id中的非法字符（Windows文件名不能包含 | 等字符）
+    safe_task_id = task_id.replace("|", "_").replace(":", "_").replace("/", "_").replace("\\", "_")
+
+    # 添加时间戳和编码支持
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_task_id}_{timestamp}.txt"
+
+    try:
+        with open(pjoin(feedback_dir, filename), "w", encoding="utf-8") as f:
+            f.write(f"Task ID: {task_id}\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Feedback:\n{feedback_text}\n")
+
+        logger.info(f"Feedback saved: {filename}")
+        return {"message": "Feedback submitted successfully", "filename": filename}
+
+    except Exception as e:
+        logger.error(f"Failed to save feedback: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save feedback")
 
 
 @app.get("/")
