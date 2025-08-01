@@ -70,13 +70,20 @@ export const apiService = {
     pdfFile?: File,
     pptxFile?: File,
     numberOfPages: number = 6,
-    topic?: string,
+    topic: string = '',  // 改为必填
     onUploadProgress?: (progress: number) => void,
     textFile?: File,
-    userInput?: string
+    userInput?: string,
+    // 新增主题配置参数
+    targetAudience?: string,
+    presentationStyle?: string,
+    userContext?: string,
+    generateTopicContent: boolean = true
   ): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('numberOfPages', numberOfPages.toString());
+    formData.append('topic', topic);  // 主题现在是必填的
+    formData.append('generateTopicContent', generateTopicContent.toString());
 
     // 添加PDF文件（如果有）
     if (pdfFile) {
@@ -98,9 +105,17 @@ export const apiService = {
       formData.append('pptxFile', pptxFile);
     }
 
-    // 添加主题（如果有）
-    if (topic) {
-      formData.append('topic', topic);
+    // 添加主题配置参数
+    if (targetAudience) {
+      formData.append('targetAudience', targetAudience);
+    }
+
+    if (presentationStyle) {
+      formData.append('presentationStyle', presentationStyle);
+    }
+
+    if (userContext) {
+      formData.append('userContext', userContext);
     }
 
     const response = await api.post<UploadResponse>('/upload', formData, {

@@ -183,9 +183,14 @@ async def create_task(
     pptxFile: UploadFile = File(None),
     pdfFile: UploadFile = File(None),
     textFile: UploadFile = File(None),  # 新增：支持文本文件
-    topic: str = Form(None),
+    topic: str = Form(...),  # 改为必填
     userInput: str = Form(None),  # 新增：支持用户直接输入
     numberOfPages: int = Form(...),
+    # 新增：主题配置参数
+    targetAudience: str = Form(None),
+    presentationStyle: str = Form(None),
+    userContext: str = Form(None),
+    generateTopicContent: bool = Form(True),
 ):
     task_id = datetime.now().strftime("20%y-%m-%d") + "/" + str(uuid.uuid4())
     logger.info(f"task created: {task_id}")
@@ -239,8 +244,16 @@ async def create_task(
             with open(pjoin(input_dir, "user_input.txt"), "w", encoding="utf-8") as f:
                 f.write(userInput)
 
-    if topic is not None:
-        task["topic"] = topic
+    # 保存主题配置
+    task["topic"] = topic
+    if targetAudience:
+        task["targetAudience"] = targetAudience
+    if presentationStyle:
+        task["presentationStyle"] = presentationStyle
+    if userContext:
+        task["userContext"] = userContext
+    task["generateTopicContent"] = generateTopicContent
+
     progress_store[task_id] = task
     # Start the PPT generation task asynchronously
     asyncio.create_task(ppt_gen(task_id))
@@ -559,14 +572,80 @@ async def ppt_gen(task_id: str, rerun=False):
         llm_logger.set_context(task_id, "pdf_parsing")
 
         # 文档解析处理
+        source_contents = []  # 用于存储多个内容源
+
         if not os.path.exists(pjoin(parsedpdf_dir, "source.md")):
+            # 处理多种内容源
+
+            # 1. 处理主题内容生成
+            if has_topic and task.get("generateTopicContent", True):
+                # 发送自定义进度消息
+                await send_progress(
+                    active_connections[task_id],
+                    "正在生成主题相关内容...",
+                    30
+                )
+
+                try:
+                    # 创建主题内容生成agent
+                    from pptagent.agent import AsyncAgent
+                    topic_generator = AsyncAgent(
+                        "topic_content_generator",
+                        llm_mapping={"language": models.language_model}
+                    )
+
+                    # 生成详细内容
+                    generated_content = await topic_generator(
+                        topic=task["topic"],
+                        user_context=task.get("userContext", ""),
+                        target_audience=task.get("targetAudience", ""),
+                        presentation_style=task.get("presentationStyle", "")
+                    )
+
+                    # 确保生成的内容是字符串
+                    if isinstance(generated_content, tuple):
+                        # 如果返回的是元组，取第二个元素（通常是实际内容）
+                        generated_content = generated_content[1] if len(generated_content) > 1 else str(generated_content[0])
+                    elif not isinstance(generated_content, str):
+                        generated_content = str(generated_content)
+
+                    source_contents.append(("主题生成内容", generated_content))
+
+                except Exception as e:
+                    logger.warning(f"主题内容生成失败，使用基础模板: {e}")
+                    # 如果AI生成失败，使用基础模板
+                    basic_content = f"""# {task['topic']}
+
+## 概述
+这是关于"{task['topic']}"的演示文稿内容。
+
+## 主要内容
+请根据以下要点展开：
+- 背景介绍
+- 核心要点
+- 具体案例
+- 总结展望
+
+## 补充信息
+{task.get('userContext', '暂无补充信息')}
+
+## 目标受众
+{task.get('targetAudience', '通用受众')}
+
+## 演示风格
+{task.get('presentationStyle', '标准演示')}"""
+
+                    source_contents.append(("主题生成内容", basic_content))
+
+            # 2. 处理文档文件
             if has_pdf:
                 # 解析PDF文件
-                text_content = parse_pdf(
+                pdf_content = parse_pdf(
                     pjoin(RUNS_DIR, "pdf", pdf_md5, "source.pdf"),
                     parsedpdf_dir,
                     models.marker_model,
                 )
+                source_contents.append(("PDF文档", pdf_content))
             elif has_text_file:
                 # 解析文本文件
                 text_md5 = task["textFile"]
@@ -584,7 +663,7 @@ async def ppt_gen(task_id: str, rerun=False):
                 # 根据文件类型解析
                 if file_type == '.md' or file_type == '.markdown':
                     with open(source_file, 'r', encoding='utf-8') as f:
-                        text_content = f.read()
+                        file_content = f.read()
                 elif file_type == '.txt':
                     # 检测编码并读取
                     with open(source_file, 'rb') as f:
@@ -593,7 +672,7 @@ async def ppt_gen(task_id: str, rerun=False):
                     with open(source_file, 'r', encoding=encoding) as f:
                         content = f.read()
                     # 简单格式化为markdown
-                    text_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
+                    file_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
                 elif file_type == '.docx':
                     # 解析DOCX文件
                     doc = docx.Document(source_file)
@@ -612,18 +691,17 @@ async def ppt_gen(task_id: str, rerun=False):
                                 content_parts.append(text)
                             content_parts.append("")
 
-                    text_content = "\n".join(content_parts)
+                    file_content = "\n".join(content_parts)
                 else:
                     # 其他格式，尝试作为纯文本处理
                     with open(source_file, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
-                    text_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
+                    file_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
 
-                # 保存解析后的内容
-                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
-                    f.write(text_content)
+                source_contents.append(("文本文件", file_content))
 
-            elif has_user_input:
+            # 3. 处理用户输入
+            if has_user_input:
                 # 处理用户直接输入
                 input_md5 = task["userInput"]
                 input_dir = pjoin(RUNS_DIR, "input", input_md5)
@@ -662,18 +740,43 @@ async def ppt_gen(task_id: str, rerun=False):
                 if current_section:
                     formatted_lines.extend(current_section)
 
-                text_content = "\n".join(formatted_lines)
+                user_input_content = "\n".join(formatted_lines)
+                source_contents.append(("用户输入", user_input_content))
 
-                # 保存格式化后的内容
-                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
-                    f.write(text_content)
+            # 4. 合并所有内容源
+            if source_contents:
+                # 合并多个内容源
+                merged_content_parts = [f"# {task['topic']}"]
+                merged_content_parts.append("")
 
-            elif has_topic:
-                # 使用topic作为文本内容
+                for source_name, content in source_contents:
+                    # 确保内容是字符串类型
+                    if not isinstance(content, str):
+                        logger.warning(f"Content from {source_name} is not string: {type(content)}")
+                        content = str(content)
+
+                    merged_content_parts.append(f"## {source_name}")
+                    merged_content_parts.append("")
+                    merged_content_parts.append(content)
+                    merged_content_parts.append("")
+
+                # 确保所有部分都是字符串
+                string_parts = []
+                for part in merged_content_parts:
+                    if isinstance(part, str):
+                        string_parts.append(part)
+                    else:
+                        logger.warning(f"Non-string part found: {type(part)} - {part}")
+                        string_parts.append(str(part))
+
+                text_content = "\n".join(string_parts)
+            else:
+                # 仅有主题，无其他内容源
                 text_content = f"# {task['topic']}\n\n请基于这个主题生成演示文稿内容。"
-                # 保存topic内容到source.md
-                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
-                    f.write(text_content)
+
+            # 保存合并后的内容到source.md
+            with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
+                f.write(text_content)
         else:
             text_content = open(
                 pjoin(parsedpdf_dir, "source.md"), encoding="utf-8"

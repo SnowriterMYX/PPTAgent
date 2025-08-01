@@ -7,7 +7,7 @@ from pptagent.document import Document, OutlineItem
 
 @pytest.mark.llm
 def test_document():
-    with open(f"{test_config.document}/source.md") as f:
+    with open(f"{test_config.document}/source.md", encoding='utf-8') as f:
         markdown_content = f.read()
     cutoff = markdown_content.find("## When (and when not) to use agents")
     image_dir = test_config.document

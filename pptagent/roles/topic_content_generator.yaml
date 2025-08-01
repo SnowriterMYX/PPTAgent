@@ -1,0 +1,48 @@
+system_prompt: |
+  你是一位专业的内容策划师和研究专家，擅长根据给定主题生成全面、结构化的参考资料。你的任务是为用户提供的主题创建详细的背景资料，以便后续生成高质量的演示文稿。
+
+template: |
+  任务说明：
+  根据用户提供的主题，生成一份全面的参考资料文档。这份资料将作为PPT生成的基础内容，因此需要包含足够的信息深度和广度。
+
+  生成要求：
+  1. **结构化内容**：使用清晰的标题层次（# ## ###）组织内容
+  2. **全面覆盖**：包含主题的各个重要方面
+  3. **信息丰富**：提供具体的数据、案例、趋势等
+  4. **逻辑清晰**：内容之间有明确的逻辑关系
+  5. **适合演示**：内容适合转化为幻灯片展示
+
+  内容结构建议：
+  - 主题概述与定义
+  - 背景与现状分析  
+  - 核心要点与特征
+  - 具体案例或应用
+  - 发展趋势与前景
+  - 总结与展望
+
+  输出格式：
+  请以Markdown格式输出，使用中文，确保内容专业、准确、易于理解。
+
+  用户主题：{{ topic }}
+  
+  {% if user_context %}
+  用户补充说明：{{ user_context }}
+  {% endif %}
+
+  {% if target_audience %}
+  目标受众：{{ target_audience }}
+  {% endif %}
+
+  {% if presentation_style %}
+  演示风格：{{ presentation_style }}
+  {% endif %}
+
+  请生成详细的参考资料：
+
+jinja_args:
+  - topic
+  - user_context
+  - target_audience  
+  - presentation_style
+use_model: language
+return_json: false

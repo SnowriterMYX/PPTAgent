@@ -320,6 +320,16 @@ class Document:
         merged_metadata = language_model(
             MERGE_METADATA_PROMPT.render(metadata=metadata_list), return_json=True
         )
+
+        # 确保merged_metadata是字典类型
+        if not isinstance(merged_metadata, dict):
+            logger.warning(f"merged_metadata is not a dict: {type(merged_metadata)}, using default metadata")
+            merged_metadata = {
+                "title": "未知标题",
+                "author": "未知作者",
+                "subject": "演示文稿"
+            }
+
         return Document(
             image_dir=image_dir, metadata=merged_metadata, sections=sections
         )
@@ -589,6 +599,16 @@ class Document:
         merged_metadata = await language_model(
             MERGE_METADATA_PROMPT.render(metadata=metadata), return_json=True
         )
+
+        # 确保merged_metadata是字典类型
+        if not isinstance(merged_metadata, dict):
+            logger.warning(f"merged_metadata is not a dict: {type(merged_metadata)}, using default metadata")
+            merged_metadata = {
+                "title": "未知标题",
+                "author": "未知作者",
+                "subject": "演示文稿"
+            }
+
         return Document(
             image_dir=image_dir, metadata=merged_metadata, sections=sections
         )

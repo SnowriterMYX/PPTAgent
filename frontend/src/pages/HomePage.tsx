@@ -34,7 +34,7 @@ import { useAppStore, useNotificationStore } from '@/store/appStore';
 import { apiService } from '@/utils/api';
 import { TaskInfo, TaskStatus } from '@/types';
 
-const steps = ['上传文件', '配置参数', '开始生成'];
+const steps = ['主题配置', '参考资料', '开始生成'];
 
 const HomePage: React.FC = () => {
   const theme = useTheme();
@@ -56,7 +56,13 @@ const HomePage: React.FC = () => {
     file?: File;
     text?: string;
   } | null>(null);
+
+  // 新增：主题配置状态
   const [topic, setTopic] = useState('');
+  const [targetAudience, setTargetAudience] = useState('');
+  const [presentationStyle, setPresentationStyle] = useState('');
+  const [userContext, setUserContext] = useState('');
+  const [generateTopicContent, setGenerateTopicContent] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgressValue, setUploadProgressValue] = useState(0);
 
@@ -78,20 +84,16 @@ const HomePage: React.FC = () => {
   // 验证当前步骤
   const validateStep = useCallback((step: number): boolean => {
     switch (step) {
-      case 0: // 文件上传
-        return documentContent !== null && (
-          (documentContent.type === 'pdf' && documentContent.file) ||
-          (documentContent.type === 'text' && documentContent.file) ||
-          (documentContent.type === 'input' && documentContent.text?.trim())
-        );
-      case 1: // 参数配置
+      case 0: // 主题配置
+        return topic.trim().length > 0;
+      case 1: // 参考资料
         return numberOfPages >= 3 && numberOfPages <= 15;
       case 2: // 确认
         return true;
       default:
         return false;
     }
-  }, [documentContent, numberOfPages]);
+  }, [topic, numberOfPages]);
 
   // 下一步
   const handleNext = useCallback(() => {
@@ -107,11 +109,11 @@ const HomePage: React.FC = () => {
 
   // 开始生成
   const handleStartGeneration = useCallback(async () => {
-    if (!documentContent) {
+    if (!topic.trim()) {
       addNotification({
         type: 'error',
-        title: '内容缺失',
-        message: '请先选择文档来源',
+        title: '主题缺失',
+        message: '请先输入演示主题',
       });
       return;
     }
@@ -128,11 +130,11 @@ const HomePage: React.FC = () => {
       let textFile: File | undefined;
       let userInputText: string | undefined;
 
-      if (documentContent.type === 'pdf' && documentContent.file) {
+      if (documentContent?.type === 'pdf' && documentContent.file) {
         pdfFile = documentContent.file;
-      } else if (documentContent.type === 'text' && documentContent.file) {
+      } else if (documentContent?.type === 'text' && documentContent.file) {
         textFile = documentContent.file;
-      } else if (documentContent.type === 'input' && documentContent.text) {
+      } else if (documentContent?.type === 'input' && documentContent.text) {
         userInputText = documentContent.text;
       }
 
@@ -141,27 +143,31 @@ const HomePage: React.FC = () => {
         pdfFile,
         pptxFiles[0],
         numberOfPages,
-        topic || undefined,
+        topic,
         (progress) => {
           setUploadProgressValue(progress);
           setUploadProgress(progress);
         },
         textFile,
-        userInputText
+        userInputText,
+        targetAudience,
+        presentationStyle,
+        userContext,
+        generateTopicContent
       );
 
       // 创建任务信息
       const taskInfo: TaskInfo = {
         id: response.task_id,
         numberOfPages,
-        pdfFile: documentContent.type === 'pdf' ? documentContent.file : undefined,
+        pdfFile: documentContent?.type === 'pdf' ? documentContent.file : undefined,
         pptxFile: pptxFiles[0],
         createdAt: new Date(),
         status: TaskStatus.PROCESSING,
         // 新增字段记录文档类型和内容
-        documentType: documentContent.type,
-        textFile: documentContent.type === 'text' ? documentContent.file : undefined,
-        userInput: documentContent.type === 'input' ? documentContent.text : undefined,
+        documentType: documentContent?.type,
+        textFile: documentContent?.type === 'text' ? documentContent.file : undefined,
+        userInput: documentContent?.type === 'input' ? documentContent.text : undefined,
       };
 
       setCurrentTask(taskInfo);
@@ -205,14 +211,148 @@ const HomePage: React.FC = () => {
     switch (step) {
       case 0:
         return (
+          <Box sx={{ maxWidth: 700, mx: 'auto' }}>
+            <NeumorphismCard>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                🎯 主题配置
+              </Typography>
+
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="演示主题"
+                    placeholder="例如：人工智能在医疗领域的应用、公司产品介绍、项目进展汇报等"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    error={topic.length > 0 && topic.trim().length === 0}
+                    helperText={topic.length > 0 && topic.trim().length === 0 ? "主题不能为空" : "请输入您要制作PPT的主题"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="目标受众（可选）"
+                    placeholder="例如：技术团队、管理层、客户等"
+                    value={targetAudience}
+                    onChange={(e) => setTargetAudience(e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="演示风格（可选）"
+                    placeholder="例如：正式商务、学术报告、创意展示等"
+                    value={presentationStyle}
+                    onChange={(e) => setPresentationStyle(e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    label="补充说明（可选）"
+                    placeholder="请提供更多背景信息、特殊要求或重点内容..."
+                    value={userContext}
+                    onChange={(e) => setUserContext(e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+              </Grid>
+            </NeumorphismCard>
+          </Box>
+        );
+
+      case 1:
+        return (
           <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             <Grid container spacing={4}>
+              {/* 基础配置 */}
+              <Grid item xs={12}>
+                <NeumorphismCard>
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    ⚙️ 基础配置
+                  </Typography>
+
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>生成页数</InputLabel>
+                        <Select
+                          value={numberOfPages}
+                          label="生成页数"
+                          onChange={(e) => setNumberOfPages(Number(e.target.value))}
+                          sx={{ borderRadius: 2 }}
+                        >
+                          {Array.from({ length: 13 }, (_, i) => i + 3).map(num => (
+                            <MenuItem key={num} value={num}>
+                              {num} 页
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                        <FormControl component="fieldset">
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            智能内容生成
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <input
+                              type="checkbox"
+                              id="generateTopicContent"
+                              checked={generateTopicContent}
+                              onChange={(e) => setGenerateTopicContent(e.target.checked)}
+                              style={{ marginRight: 8 }}
+                            />
+                            <label htmlFor="generateTopicContent">
+                              <Typography variant="body2">
+                                自动生成主题相关内容
+                              </Typography>
+                            </label>
+                          </Box>
+                        </FormControl>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </NeumorphismCard>
+              </Grid>
+
+              {/* 参考资料 */}
               <Grid item xs={12}>
                 <MultiFormatUpload
                   onContentChange={handleDocumentContentChange}
                   disabled={isUploading}
                 />
               </Grid>
+
+              {/* PPT模板 */}
               <Grid item xs={12}>
                 <FileUpload
                   title="🎨 上传PPT模板（可选）"
@@ -223,45 +363,7 @@ const HomePage: React.FC = () => {
                   onFilesChange={setPptxFiles}
                 />
               </Grid>
-            </Grid>
-          </Box>
-        );
 
-      case 1:
-        return (
-          <Box sx={{ maxWidth: 600, mx: 'auto' }}>
-            <Grid container spacing={4}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>生成页数</InputLabel>
-                  <Select
-                    value={numberOfPages}
-                    label="生成页数"
-                    onChange={(e) => setNumberOfPages(Number(e.target.value))}
-                    sx={{ borderRadius: 2 }}
-                  >
-                    {Array.from({ length: 13 }, (_, i) => i + 3).map(num => (
-                      <MenuItem key={num} value={num}>
-                        {num} 页
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="主题描述（可选）"
-                  placeholder="例如：产品介绍、学术报告等"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2
-                    }
-                  }}
-                />
-              </Grid>
               <Grid item xs={12}>
                 <Alert
                   severity="info"
@@ -272,7 +374,7 @@ const HomePage: React.FC = () => {
                   }}
                 >
                   <Typography variant="body2">
-                    💡 页数建议6-12页，主题描述有助于AI更好理解内容
+                    💡 参考资料是可选的。如果您没有现成的资料，可以开启"智能内容生成"，系统会根据主题自动生成相关内容
                   </Typography>
                 </Alert>
               </Grid>
@@ -297,13 +399,22 @@ const HomePage: React.FC = () => {
               <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <Typography variant="body2" color="text.secondary">
-                    📄 文档来源
+                    🎯 演示主题
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
+                    {topic}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">
+                    📄 参考资料
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
                     {documentContent?.type === 'pdf' && documentContent.file?.name}
                     {documentContent?.type === 'text' && documentContent.file?.name}
                     {documentContent?.type === 'input' && '用户直接输入'}
-                    {!documentContent && '未选择'}
+                    {!documentContent && (generateTopicContent ? 'AI智能生成' : '无参考资料')}
                   </Typography>
                   {documentContent?.type === 'input' && documentContent.text && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -328,13 +439,36 @@ const HomePage: React.FC = () => {
                     {pptxFiles[0]?.name ? '已上传' : '默认模板'}
                   </Typography>
                 </Grid>
-                {topic && (
-                  <Grid item xs={12}>
+
+                {targetAudience && (
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">
-                      🎯 主题描述
+                      👥 目标受众
                     </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
-                      {topic}
+                      {targetAudience}
+                    </Typography>
+                  </Grid>
+                )}
+
+                {presentationStyle && (
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      🎭 演示风格
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
+                      {presentationStyle}
+                    </Typography>
+                  </Grid>
+                )}
+
+                {userContext && (
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">
+                      📝 补充说明
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
+                      {userContext.length > 100 ? `${userContext.substring(0, 100)}...` : userContext}
                     </Typography>
                   </Grid>
                 )}
