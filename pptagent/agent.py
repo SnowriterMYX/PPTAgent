@@ -238,13 +238,22 @@ class Agent:
         for turn in history:
             history_msg.extend(turn.message)
 
-        response, message = self.llm(
-            prompt,
-            system_message=self.system_message,
-            history=history_msg,
-            images=images,
-            return_message=True,
-        )
+        # 设置Agent角色上下文
+        from pptagent.llms import llm_logger
+        original_agent_role = llm_logger.current_agent_role
+        llm_logger.current_agent_role = self.name
+
+        try:
+            response, message = self.llm(
+                prompt,
+                system_message=self.system_message,
+                history=history_msg,
+                images=images,
+                return_message=True,
+            )
+        finally:
+            # 恢复原始的agent_role
+            llm_logger.current_agent_role = original_agent_role
         turn = Turn(
             id=self.next_turn_id,
             prompt=prompt,
@@ -342,13 +351,22 @@ class AsyncAgent(Agent):
         for turn in history:
             history_msg.extend(turn.message)
 
-        response, message = await self.llm(
-            prompt,
-            system_message=self.system_message,
-            history=history_msg,
-            images=images,
-            return_message=True,
-        )
+        # 设置Agent角色上下文
+        from pptagent.llms import llm_logger
+        original_agent_role = llm_logger.current_agent_role
+        llm_logger.current_agent_role = self.name
+
+        try:
+            response, message = await self.llm(
+                prompt,
+                system_message=self.system_message,
+                history=history_msg,
+                images=images,
+                return_message=True,
+            )
+        finally:
+            # 恢复原始的agent_role
+            llm_logger.current_agent_role = original_agent_role
         turn = Turn(
             id=self.next_turn_id,
             prompt=prompt,

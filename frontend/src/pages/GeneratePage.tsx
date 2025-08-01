@@ -14,6 +14,12 @@ import {
   Chip,
   Grid,
   useTheme,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Card,
+  CardContent,
+  Divider,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -22,6 +28,9 @@ import {
   Error as ErrorIcon,
   Refresh as RefreshIcon,
   Home as HomeIcon,
+  ExpandMore as ExpandMoreIcon,
+  Psychology as PsychologyIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -29,6 +38,23 @@ import NeumorphismCard from '@/components/common/NeumorphismCard';
 import { useAppStore, useNotificationStore } from '@/store/appStore';
 import { apiService } from '@/utils/api';
 import { TaskStatus } from '@/types';
+
+// 时间格式化工具函数
+const formatDuration = (ms: number): string => {
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  } else if (ms < 60000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  } else if (ms < 3600000) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.round((ms % 60000) / 1000);
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  } else {
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.round((ms % 3600000) / 60000);
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+};
 
 const GeneratePage: React.FC = () => {
   const theme = useTheme();
@@ -46,6 +72,12 @@ const GeneratePage: React.FC = () => {
   const [feedback, setFeedback] = useState('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // LLM记录相关状态
+  const [llmLogs, setLlmLogs] = useState<any[]>([]);
+  const [llmLogsOpen, setLlmLogsOpen] = useState(false);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [llmSummary, setLlmSummary] = useState<any>(null);
 
   // WebSocket引用 - 简化版本
   const wsRef = useRef<WebSocket | null>(null);
@@ -215,6 +247,50 @@ const GeneratePage: React.FC = () => {
   const handleRetry = () => {
     setError(null);
     startGeneration();
+  };
+
+  // 获取LLM记录
+  const fetchLlmLogs = async () => {
+    if (!taskId || isLoadingLogs) return;
+
+    setIsLoadingLogs(true);
+    try {
+      const response = await fetch(`/api/llm-logs/${taskId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLlmLogs(data.logs || []);
+      } else {
+        console.error('Failed to fetch LLM logs:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching LLM logs:', error);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  // 获取LLM记录摘要
+  const fetchLlmSummary = async () => {
+    if (!taskId) return;
+
+    try {
+      const response = await fetch(`/api/llm-logs/${taskId}/summary`);
+      if (response.ok) {
+        const data = await response.json();
+        setLlmSummary(data.summary);
+      } else {
+        console.error('Failed to fetch LLM summary:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching LLM summary:', error);
+    }
+  };
+
+  // 打开LLM记录对话框
+  const handleOpenLlmLogs = () => {
+    setLlmLogsOpen(true);
+    fetchLlmLogs();
+    fetchLlmSummary();
   };
 
   // 获取状态信息
@@ -403,6 +479,17 @@ const GeneratePage: React.FC = () => {
             提交反馈
           </Button>
 
+          {/* LLM记录按钮 */}
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<PsychologyIcon />}
+            onClick={handleOpenLlmLogs}
+            sx={{ minWidth: 140 }}
+          >
+            LLM记录
+          </Button>
+
           {/* 重试按钮 */}
           {hasError && (
             <Button
@@ -476,6 +563,248 @@ const GeneratePage: React.FC = () => {
             variant="contained"
           >
             {isSubmittingFeedback ? '提交中...' : '提交'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* LLM记录对话框 */}
+      <Dialog
+        open={llmLogsOpen}
+        onClose={() => setLlmLogsOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: { height: '80vh' }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <PsychologyIcon />
+          LLM请求记录
+          {llmSummary && (
+            <>
+              <Chip
+                label={`${llmSummary.total_requests} 个请求`}
+                size="small"
+                color="primary"
+              />
+              {llmSummary.total_tokens > 0 && (
+                <Chip
+                  label={`${llmSummary.total_tokens.toLocaleString()} Tokens`}
+                  size="small"
+                  color="secondary"
+                />
+              )}
+            </>
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {isLoadingLogs ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <LinearProgress sx={{ mb: 2 }} />
+              <Typography>正在加载LLM记录...</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ height: '100%', overflow: 'auto' }}>
+              {/* 摘要信息 */}
+              {llmSummary && (
+                <Card sx={{ m: 2, mb: 1 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TimelineIcon />
+                      统计摘要
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">总请求数</Typography>
+                        <Typography variant="h6">{llmSummary.total_requests}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">成功请求</Typography>
+                        <Typography variant="h6" color="success.main">{llmSummary.successful_requests}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">失败请求</Typography>
+                        <Typography variant="h6" color="error.main">{llmSummary.failed_requests}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">总耗时</Typography>
+                        <Typography variant="h6">{formatDuration(llmSummary.total_duration_ms)}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">总Token数</Typography>
+                        <Typography variant="h6" color="primary.main">
+                          {llmSummary.total_tokens ? llmSummary.total_tokens.toLocaleString() : '0'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">平均耗时</Typography>
+                        <Typography variant="h6">
+                          {llmSummary.total_requests > 0
+                            ? formatDuration(llmSummary.total_duration_ms / llmSummary.total_requests)
+                            : '0ms'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+
+                    {/* 阶段统计 */}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>各阶段请求数</Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {Object.entries(llmSummary.stages).map(([stage, count]) => (
+                          <Chip
+                            key={stage}
+                            label={`${stage}: ${count}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+
+                    {/* 模型类型统计 */}
+                    {llmSummary.model_types && Object.keys(llmSummary.model_types).length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>模型类型分布</Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {Object.entries(llmSummary.model_types).map(([modelType, count]) => (
+                            <Chip
+                              key={modelType}
+                              label={`${modelType}: ${count}`}
+                              size="small"
+                              variant="outlined"
+                              color="secondary"
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+
+                    {/* Token使用效率 */}
+                    {llmSummary.total_tokens > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Token使用效率</Typography>
+                        <Grid container spacing={1}>
+                          <Grid item xs={6}>
+                            <Typography variant="caption" color="text.secondary">平均每请求Token</Typography>
+                            <Typography variant="body2" fontWeight="bold">
+                              {Math.round(llmSummary.total_tokens / llmSummary.total_requests)}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="caption" color="text.secondary">Token/秒</Typography>
+                            <Typography variant="body2" fontWeight="bold">
+                              {llmSummary.total_duration_ms > 0
+                                ? Math.round(llmSummary.total_tokens / (llmSummary.total_duration_ms / 1000))
+                                : 0}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 详细记录 */}
+              <Box sx={{ p: 2, pt: 1 }}>
+                {llmLogs.length === 0 ? (
+                  <Typography color="text.secondary" textAlign="center" sx={{ py: 4 }}>
+                    暂无LLM请求记录
+                  </Typography>
+                ) : (
+                  llmLogs.map((log, index) => (
+                    <Accordion key={log.request_id || index} sx={{ mb: 1 }}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                          <Chip
+                            label={log.status}
+                            size="small"
+                            color={log.status === 'success' ? 'success' : 'error'}
+                          />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {log.stage} - {log.agent_role || '未知角色'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {log.model_type} | {formatDuration(log.duration_ms)}
+                          </Typography>
+                        </Box>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="subtitle2" gutterBottom>请求内容</Typography>
+                            <Box sx={{
+                              bgcolor: 'grey.50',
+                              p: 2,
+                              borderRadius: 1,
+                              maxHeight: 200,
+                              overflow: 'auto',
+                              fontSize: '0.875rem',
+                              fontFamily: 'monospace'
+                            }}>
+                              {log.request?.content || '无内容'}
+                            </Box>
+                            {log.request?.images && log.request.images.length > 0 && (
+                              <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  图像: {log.request.images.length} 个
+                                </Typography>
+                              </Box>
+                            )}
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="subtitle2" gutterBottom>响应内容</Typography>
+                            <Box sx={{
+                              bgcolor: 'grey.50',
+                              p: 2,
+                              borderRadius: 1,
+                              maxHeight: 200,
+                              overflow: 'auto',
+                              fontSize: '0.875rem',
+                              fontFamily: 'monospace'
+                            }}>
+                              {log.response?.content || log.response?.error || '无内容'}
+                            </Box>
+                            {log.response?.tokens_used && (
+                              <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Token使用: {log.response.tokens_used.toLocaleString()}
+                                </Typography>
+                                {log.duration_ms > 0 && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                                    速率: {Math.round(log.response.tokens_used / (log.duration_ms / 1000))} tokens/s
+                                  </Typography>
+                                )}
+                              </Box>
+                            )}
+                          </Grid>
+                        </Grid>
+                        <Divider sx={{ my: 2 }} />
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            时间: {new Date(log.timestamp).toLocaleString()}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            模型: {log.model_name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            请求ID: {log.request_id}
+                          </Typography>
+                        </Box>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))
+                )}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLlmLogsOpen(false)}>
+            关闭
+          </Button>
+          <Button onClick={fetchLlmLogs} disabled={isLoadingLogs}>
+            刷新
           </Button>
         </DialogActions>
       </Dialog>

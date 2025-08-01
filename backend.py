@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse
 import pptagent.induct as induct
 import pptagent.pptgen as pptgen
 from pptagent.document import Document
+from pptagent.llms import llm_logger
 from pptagent.model_utils import ModelManager, parse_pdf
 from pptagent.multimodal import ImageLabler
 from pptagent.presentation import Presentation
@@ -318,6 +319,104 @@ async def api_hello():
     return {"message": "Hello, World!"}
 
 
+@app.get("/api/llm-logs/{task_id}")
+async def get_llm_logs(task_id: str):
+    """
+    获取指定任务的LLM请求记录
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        LLM请求记录列表
+    """
+    try:
+        # 解码任务ID
+        decoded_task_id = task_id.replace("|", "/")
+
+        # 检查任务是否存在
+        if not os.path.exists(pjoin(RUNS_DIR, decoded_task_id)):
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # 获取LLM记录
+        logs = llm_logger.get_logs(decoded_task_id)
+
+        return {
+            "task_id": task_id,
+            "logs": logs,
+            "total_count": len(logs)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get LLM logs for task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve LLM logs")
+
+
+@app.get("/api/llm-logs/{task_id}/summary")
+async def get_llm_logs_summary(task_id: str):
+    """
+    获取指定任务的LLM请求记录摘要
+
+    Args:
+        task_id: 任务ID
+
+    Returns:
+        LLM请求记录摘要统计
+    """
+    try:
+        # 解码任务ID
+        decoded_task_id = task_id.replace("|", "/")
+
+        # 检查任务是否存在
+        if not os.path.exists(pjoin(RUNS_DIR, decoded_task_id)):
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # 获取LLM记录
+        logs = llm_logger.get_logs(decoded_task_id)
+
+        # 统计信息
+        summary = {
+            "total_requests": len(logs),
+            "successful_requests": len([log for log in logs if log.get("status") == "success"]),
+            "failed_requests": len([log for log in logs if log.get("status") == "error"]),
+            "stages": {},
+            "model_types": {},
+            "total_duration_ms": 0,
+            "total_tokens": 0
+        }
+
+        for log in logs:
+            # 按阶段统计
+            stage = log.get("stage", "unknown")
+            if stage not in summary["stages"]:
+                summary["stages"][stage] = 0
+            summary["stages"][stage] += 1
+
+            # 按模型类型统计
+            model_type = log.get("model_type", "unknown")
+            if model_type not in summary["model_types"]:
+                summary["model_types"][model_type] = 0
+            summary["model_types"][model_type] += 1
+
+            # 累计耗时
+            summary["total_duration_ms"] += log.get("duration_ms", 0)
+
+            # 累计token使用
+            response = log.get("response", {})
+            tokens = response.get("tokens_used", 0)
+            if tokens:
+                summary["total_tokens"] += tokens
+
+        return {
+            "task_id": task_id,
+            "summary": summary
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get LLM logs summary for task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve LLM logs summary")
+
+
 async def ppt_gen(task_id: str, rerun=False):
     if DEBUG:
         importlib.reload(induct)
@@ -366,6 +465,9 @@ async def ppt_gen(task_id: str, rerun=False):
     )
 
     try:
+        # 设置LLM记录器上下文
+        llm_logger.set_context(task_id, "ppt_parsing")
+
         # ppt parsing
         presentation = Presentation.from_file(
             pjoin(pptx_config.RUN_DIR, "source.pptx"), pptx_config
@@ -389,6 +491,9 @@ async def ppt_gen(task_id: str, rerun=False):
                     pjoin(ppt_image_folder, f"slide_{slide.slide_idx:04d}.jpg"),
                 )
 
+        # 设置图像标注阶段上下文
+        llm_logger.set_context(task_id, "image_caption")
+
         labler = ImageLabler(presentation, pptx_config)
         if os.path.exists(pjoin(pptx_config.RUN_DIR, "image_stats.json")):
             image_stats = json.load(
@@ -408,6 +513,9 @@ async def ppt_gen(task_id: str, rerun=False):
                 indent=4,
             )
         await progress.report_progress()
+
+        # 设置PDF解析阶段上下文
+        llm_logger.set_context(task_id, "pdf_parsing")
 
         # pdf parsing or topic processing
         if not os.path.exists(pjoin(parsedpdf_dir, "source.md")):
@@ -429,6 +537,9 @@ async def ppt_gen(task_id: str, rerun=False):
                 pjoin(parsedpdf_dir, "source.md"), encoding="utf-8"
             ).read()
         await progress.report_progress()
+
+        # 设置文档优化阶段上下文
+        llm_logger.set_context(task_id, "document_refine")
 
         # document refine
         if not os.path.exists(pjoin(parsedpdf_dir, "refined_doc.json")):
@@ -467,6 +578,9 @@ async def ppt_gen(task_id: str, rerun=False):
                 )
         await progress.report_progress()
 
+        # 设置幻灯片归纳阶段上下文
+        llm_logger.set_context(task_id, "slide_induction")
+
         # Slide Induction
         if not os.path.exists(pjoin(pptx_config.RUN_DIR, "slide_induction.json")):
             deepcopy(presentation).save(
@@ -504,6 +618,9 @@ async def ppt_gen(task_id: str, rerun=False):
                 )
             )
         await progress.report_progress()
+
+        # 设置PPT生成阶段上下文
+        llm_logger.set_context(task_id, "ppt_generation")
 
         # PPT Generation with PPTAgentAsync
         ppt_agent = pptgen.PPTAgentAsync(
