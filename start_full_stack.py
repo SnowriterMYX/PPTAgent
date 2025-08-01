@@ -119,7 +119,7 @@ class FullStackLauncher:
                     python_cmd = sys.executable
             
             # 启动后端
-            backend_script = Path("pptagent_ui/backend.py")
+            backend_script = Path("backend.py")
             if backend_script.exists():
                 self.backend_process = subprocess.Popen(
                     [python_cmd, str(backend_script)],

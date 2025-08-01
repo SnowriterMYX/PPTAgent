@@ -207,7 +207,7 @@ async def create_task(
             with open(pjoin(pdf_dir, "source.pdf"), "wb") as f:
                 f.write(pdf_blob)
     if topic is not None:
-        task["pdf"] = topic
+        task["topic"] = topic
     progress_store[task_id] = task
     # Start the PPT generation task asynchronously
     asyncio.create_task(ppt_gen(task_id))
@@ -339,12 +339,26 @@ async def ppt_gen(task_id: str, rerun=False):
 
     task = progress_store.pop(task_id)
     pptx_md5 = task["pptx"]
-    pdf_md5 = task["pdf"]
     generation_config = Config(pjoin(RUNS_DIR, task_id))
     pptx_config = Config(pjoin(RUNS_DIR, "pptx", pptx_md5))
     json.dump(task, open(pjoin(generation_config.RUN_DIR, "task.json"), "w", encoding="utf-8"), ensure_ascii=False)
     progress = ProgressManager(task_id, STAGES)
-    parsedpdf_dir = pjoin(RUNS_DIR, "pdf", pdf_md5)
+
+    # 检查是否有PDF文件或只有topic
+    has_pdf = "pdf" in task and task["pdf"] is not None
+    has_topic = "topic" in task and task["topic"] is not None
+
+    if has_pdf:
+        pdf_md5 = task["pdf"]
+        parsedpdf_dir = pjoin(RUNS_DIR, "pdf", pdf_md5)
+    elif has_topic:
+        # 为topic创建一个唯一的目录
+        topic_hash = hashlib.md5(task["topic"].encode('utf-8')).hexdigest()
+        parsedpdf_dir = pjoin(RUNS_DIR, "topic", topic_hash)
+        os.makedirs(parsedpdf_dir, exist_ok=True)
+    else:
+        await progress.fail_stage("No PDF file or topic provided")
+        return
     ppt_image_folder = pjoin(pptx_config.RUN_DIR, "slide_images")
 
     await send_progress(
@@ -395,13 +409,21 @@ async def ppt_gen(task_id: str, rerun=False):
             )
         await progress.report_progress()
 
-        # pdf parsing
+        # pdf parsing or topic processing
         if not os.path.exists(pjoin(parsedpdf_dir, "source.md")):
-            text_content = parse_pdf(
-                pjoin(RUNS_DIR, "pdf", pdf_md5, "source.pdf"),
-                parsedpdf_dir,
-                models.marker_model,
-            )
+            if has_pdf:
+                # 解析PDF文件
+                text_content = parse_pdf(
+                    pjoin(RUNS_DIR, "pdf", pdf_md5, "source.pdf"),
+                    parsedpdf_dir,
+                    models.marker_model,
+                )
+            elif has_topic:
+                # 使用topic作为文本内容
+                text_content = f"# {task['topic']}\n\n请基于这个主题生成演示文稿内容。"
+                # 保存topic内容到source.md
+                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
+                    f.write(text_content)
         else:
             text_content = open(
                 pjoin(parsedpdf_dir, "source.md"), encoding="utf-8"
