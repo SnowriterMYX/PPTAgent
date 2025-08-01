@@ -354,10 +354,13 @@ const GeneratePage: React.FC = () => {
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <Typography variant="body2" color="text.secondary">
-                PDF文档：
+                文档来源：
               </Typography>
               <Typography variant="body1">
-                {currentTask.pdfFile.name}
+                {currentTask.documentType === 'pdf' && currentTask.pdfFile?.name}
+                {currentTask.documentType === 'text' && currentTask.textFile?.name}
+                {currentTask.documentType === 'input' && '用户直接输入'}
+                {!currentTask.documentType && (currentTask.pdfFile?.name || '未知来源')}
               </Typography>
             </Grid>
             <Grid item xs={12} sm={6}>

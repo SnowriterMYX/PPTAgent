@@ -4,6 +4,9 @@ import traceback
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Optional
+import os
+import docx
+import chardet
 
 from jinja2 import Environment, StrictUndefined
 from torch import cosine_similarity
@@ -71,7 +74,7 @@ def split_markdown_by_headings(
             sections[i - 1] += sections[i]
             sections.pop(i)
 
-    if len(sections[0]) < min_chunk_size:
+    if len(sections) > 1 and len(sections[0]) < min_chunk_size:
         sections[0] += sections[1]
         sections.pop(1)
 
@@ -320,6 +323,216 @@ class Document:
         return Document(
             image_dir=image_dir, metadata=merged_metadata, sections=sections
         )
+
+    @classmethod
+    def from_text_file(
+        cls,
+        file_path: str,
+        language_model: LLM,
+        vision_model: LLM,
+        image_dir: str,
+        table_model: Optional[LLM] = None,
+        file_type: str = "auto",
+    ):
+        """
+        从各种文本文件格式创建Document对象
+
+        Args:
+            file_path (str): 文件路径
+            language_model (LLM): 语言模型
+            vision_model (LLM): 视觉模型
+            image_dir (str): 图片目录
+            table_model (Optional[LLM]): 表格模型
+            file_type (str): 文件类型，支持 "auto", "txt", "md", "docx", "rtf"
+
+        Returns:
+            Document: 创建的文档对象
+        """
+        # 自动检测文件类型
+        if file_type == "auto":
+            file_type = cls._detect_file_type(file_path)
+
+        # 根据文件类型解析内容
+        if file_type == "txt":
+            content = cls._parse_txt_file(file_path)
+        elif file_type == "md" or file_type == "markdown":
+            content = cls._parse_markdown_file(file_path)
+        elif file_type == "docx":
+            content = cls._parse_docx_file(file_path)
+        elif file_type == "rtf":
+            content = cls._parse_rtf_file(file_path)
+        else:
+            raise ValueError(f"不支持的文件类型: {file_type}")
+
+        # 使用from_markdown方法处理内容
+        return cls.from_markdown(content, language_model, vision_model, image_dir, table_model)
+
+    @classmethod
+    def from_user_input(
+        cls,
+        user_text: str,
+        language_model: LLM,
+        vision_model: LLM,
+        image_dir: str,
+        table_model: Optional[LLM] = None,
+        title: str = "用户输入文档",
+    ):
+        """
+        从用户直接输入的文本创建Document对象
+
+        Args:
+            user_text (str): 用户输入的文本内容
+            language_model (LLM): 语言模型
+            vision_model (LLM): 视觉模型
+            image_dir (str): 图片目录
+            table_model (Optional[LLM]): 表格模型
+            title (str): 文档标题
+
+        Returns:
+            Document: 创建的文档对象
+        """
+        # 将用户输入转换为markdown格式
+        markdown_content = cls._format_user_input_to_markdown(user_text, title)
+
+        # 使用from_markdown方法处理内容
+        return cls.from_markdown(markdown_content, language_model, vision_model, image_dir, table_model)
+
+    @staticmethod
+    def _detect_file_type(file_path: str) -> str:
+        """自动检测文件类型"""
+        _, ext = os.path.splitext(file_path.lower())
+
+        type_mapping = {
+            '.txt': 'txt',
+            '.md': 'md',
+            '.markdown': 'md',
+            '.docx': 'docx',
+            '.rtf': 'rtf',
+        }
+
+        return type_mapping.get(ext, 'txt')
+
+    @staticmethod
+    def _parse_txt_file(file_path: str) -> str:
+        """解析TXT文件"""
+        try:
+            # 尝试检测文件编码
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+                encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+
+            # 使用检测到的编码读取文件
+            with open(file_path, 'r', encoding=encoding) as f:
+                content = f.read()
+
+            return content
+        except Exception as e:
+            logger.warning(f"TXT文件解析失败，尝试使用UTF-8编码: {e}")
+            # 备用方案：使用UTF-8编码
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+
+    @staticmethod
+    def _parse_markdown_file(file_path: str) -> str:
+        """解析Markdown文件"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except UnicodeDecodeError:
+            # 尝试其他编码
+            with open(file_path, 'rb') as f:
+                raw_data = f.read()
+                encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+
+            with open(file_path, 'r', encoding=encoding) as f:
+                return f.read()
+
+    @staticmethod
+    def _parse_docx_file(file_path: str) -> str:
+        """解析DOCX文件"""
+        try:
+            doc = docx.Document(file_path)
+            content_parts = []
+
+            for paragraph in doc.paragraphs:
+                text = paragraph.text.strip()
+                if text:
+                    # 根据段落样式判断是否为标题
+                    if paragraph.style.name.startswith('Heading'):
+                        level = paragraph.style.name.replace('Heading ', '')
+                        if level.isdigit():
+                            content_parts.append(f"{'#' * int(level)} {text}")
+                        else:
+                            content_parts.append(f"## {text}")
+                    else:
+                        content_parts.append(text)
+                    content_parts.append("")  # 添加空行
+
+            return "\n".join(content_parts)
+        except Exception as e:
+            logger.error(f"DOCX文件解析失败: {e}")
+            raise ValueError(f"无法解析DOCX文件: {e}")
+
+    @staticmethod
+    def _parse_rtf_file(file_path: str) -> str:
+        """解析RTF文件（简单实现）"""
+        try:
+            # 简单的RTF解析，去除RTF控制字符
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+
+            # 移除RTF控制字符（简单处理）
+            import re
+            # 移除RTF头部
+            content = re.sub(r'\\rtf\d+.*?\\deff\d+', '', content)
+            # 移除控制字符
+            content = re.sub(r'\\[a-z]+\d*\s?', '', content)
+            # 移除花括号
+            content = re.sub(r'[{}]', '', content)
+            # 清理多余空白
+            content = re.sub(r'\s+', ' ', content).strip()
+
+            return content
+        except Exception as e:
+            logger.error(f"RTF文件解析失败: {e}")
+            raise ValueError(f"无法解析RTF文件: {e}")
+
+    @staticmethod
+    def _format_user_input_to_markdown(user_text: str, title: str) -> str:
+        """将用户输入格式化为Markdown"""
+        lines = user_text.strip().split('\n')
+        formatted_lines = [f"# {title}", ""]
+
+        current_section = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                if current_section:
+                    formatted_lines.extend(current_section)
+                    formatted_lines.append("")
+                    current_section = []
+                continue
+
+            # 检测是否可能是标题（简单启发式）
+            if (len(line) < 50 and
+                not line.endswith('.') and
+                not line.endswith(',') and
+                not line.endswith(';')):
+                # 可能是标题
+                if current_section:
+                    formatted_lines.extend(current_section)
+                    formatted_lines.append("")
+                    current_section = []
+                formatted_lines.append(f"## {line}")
+                formatted_lines.append("")
+            else:
+                current_section.append(line)
+
+        # 添加剩余内容
+        if current_section:
+            formatted_lines.extend(current_section)
+
+        return "\n".join(formatted_lines)
 
     @classmethod
     async def from_markdown_async(

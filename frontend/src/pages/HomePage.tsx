@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import NeumorphismCard from '@/components/common/NeumorphismCard';
 import FileUpload from '@/components/common/FileUpload';
+import MultiFormatUpload from '@/components/common/MultiFormatUpload';
 import { useAppStore, useNotificationStore } from '@/store/appStore';
 import { apiService } from '@/utils/api';
 import { TaskInfo, TaskStatus } from '@/types';
@@ -48,15 +49,41 @@ const HomePage: React.FC = () => {
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [pptxFiles, setPptxFiles] = useState<File[]>([]);
   const [numberOfPages, setNumberOfPages] = useState(6);
+
+  // 新增：多格式文档支持
+  const [documentContent, setDocumentContent] = useState<{
+    type: 'pdf' | 'text' | 'input';
+    file?: File;
+    text?: string;
+  } | null>(null);
   const [topic, setTopic] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgressValue, setUploadProgressValue] = useState(0);
+
+  // 处理文档内容变化
+  const handleDocumentContentChange = useCallback((content: {
+    type: 'pdf' | 'text' | 'input';
+    file?: File;
+    text?: string;
+  }) => {
+    setDocumentContent(content);
+    // 兼容旧的PDF文件状态
+    if (content.type === 'pdf' && content.file) {
+      setPdfFiles([content.file]);
+    } else {
+      setPdfFiles([]);
+    }
+  }, []);
 
   // 验证当前步骤
   const validateStep = useCallback((step: number): boolean => {
     switch (step) {
       case 0: // 文件上传
-        return pdfFiles.length > 0;
+        return documentContent !== null && (
+          (documentContent.type === 'pdf' && documentContent.file) ||
+          (documentContent.type === 'text' && documentContent.file) ||
+          (documentContent.type === 'input' && documentContent.text?.trim())
+        );
       case 1: // 参数配置
         return numberOfPages >= 3 && numberOfPages <= 15;
       case 2: // 确认
@@ -64,7 +91,7 @@ const HomePage: React.FC = () => {
       default:
         return false;
     }
-  }, [pdfFiles.length, numberOfPages]);
+  }, [documentContent, numberOfPages]);
 
   // 下一步
   const handleNext = useCallback(() => {
@@ -80,11 +107,11 @@ const HomePage: React.FC = () => {
 
   // 开始生成
   const handleStartGeneration = useCallback(async () => {
-    if (!pdfFiles[0]) {
+    if (!documentContent) {
       addNotification({
         type: 'error',
-        title: '文件缺失',
-        message: '请先上传PDF文件',
+        title: '内容缺失',
+        message: '请先选择文档来源',
       });
       return;
     }
@@ -96,26 +123,45 @@ const HomePage: React.FC = () => {
       // 检查后端连接
       await apiService.healthCheck();
 
+      // 准备上传参数
+      let pdfFile: File | undefined;
+      let textFile: File | undefined;
+      let userInputText: string | undefined;
+
+      if (documentContent.type === 'pdf' && documentContent.file) {
+        pdfFile = documentContent.file;
+      } else if (documentContent.type === 'text' && documentContent.file) {
+        textFile = documentContent.file;
+      } else if (documentContent.type === 'input' && documentContent.text) {
+        userInputText = documentContent.text;
+      }
+
       // 上传文件
       const response = await apiService.uploadFiles(
-        pdfFiles[0],
+        pdfFile,
         pptxFiles[0],
         numberOfPages,
         topic || undefined,
         (progress) => {
           setUploadProgressValue(progress);
           setUploadProgress(progress);
-        }
+        },
+        textFile,
+        userInputText
       );
 
       // 创建任务信息
       const taskInfo: TaskInfo = {
         id: response.task_id,
         numberOfPages,
-        pdfFile: pdfFiles[0],
+        pdfFile: documentContent.type === 'pdf' ? documentContent.file : undefined,
         pptxFile: pptxFiles[0],
         createdAt: new Date(),
         status: TaskStatus.PROCESSING,
+        // 新增字段记录文档类型和内容
+        documentType: documentContent.type,
+        textFile: documentContent.type === 'text' ? documentContent.file : undefined,
+        userInput: documentContent.type === 'input' ? documentContent.text : undefined,
       };
 
       setCurrentTask(taskInfo);
@@ -159,17 +205,12 @@ const HomePage: React.FC = () => {
     switch (step) {
       case 0:
         return (
-          <Box sx={{ maxWidth: 700, mx: 'auto' }}>
+          <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             <Grid container spacing={4}>
               <Grid item xs={12}>
-                <FileUpload
-                  title="📄 上传PDF文档"
-                  description="选择您要转换为PPT的PDF文档"
-                  accept={['.pdf', 'application/pdf']}
-                  maxSize={50}
-                  files={pdfFiles}
-                  onFilesChange={setPdfFiles}
-                  required
+                <MultiFormatUpload
+                  onContentChange={handleDocumentContentChange}
+                  disabled={isUploading}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -256,11 +297,20 @@ const HomePage: React.FC = () => {
               <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <Typography variant="body2" color="text.secondary">
-                    📄 PDF文档
+                    📄 文档来源
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
-                    {pdfFiles[0]?.name || '未选择'}
+                    {documentContent?.type === 'pdf' && documentContent.file?.name}
+                    {documentContent?.type === 'text' && documentContent.file?.name}
+                    {documentContent?.type === 'input' && '用户直接输入'}
+                    {!documentContent && '未选择'}
                   </Typography>
+                  {documentContent?.type === 'input' && documentContent.text && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      内容预览：{documentContent.text.substring(0, 100)}
+                      {documentContent.text.length > 100 && '...'}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="text.secondary">

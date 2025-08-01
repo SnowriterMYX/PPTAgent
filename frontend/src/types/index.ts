@@ -45,9 +45,13 @@ export interface TaskInfo {
   id: string;
   numberOfPages: number;
   pptxFile?: File;
-  pdfFile: File;
+  pdfFile?: File;  // 改为可选，因为现在支持多种文档类型
   createdAt: Date;
   status: TaskStatus;
+  // 新增字段支持多种文档类型
+  documentType?: 'pdf' | 'text' | 'input';
+  textFile?: File;
+  userInput?: string;
 }
 
 export enum TaskStatus {

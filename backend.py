@@ -7,6 +7,9 @@ import signal
 import sys
 import traceback
 import uuid
+
+import chardet
+import docx
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import datetime
@@ -179,7 +182,9 @@ class ProgressManager:
 async def create_task(
     pptxFile: UploadFile = File(None),
     pdfFile: UploadFile = File(None),
+    textFile: UploadFile = File(None),  # 新增：支持文本文件
     topic: str = Form(None),
+    userInput: str = Form(None),  # 新增：支持用户直接输入
     numberOfPages: int = Form(...),
 ):
     task_id = datetime.now().strftime("20%y-%m-%d") + "/" + str(uuid.uuid4())
@@ -207,6 +212,33 @@ async def create_task(
             os.makedirs(pdf_dir, exist_ok=True)
             with open(pjoin(pdf_dir, "source.pdf"), "wb") as f:
                 f.write(pdf_blob)
+
+    # 处理文本文件上传
+    if textFile is not None:
+        text_blob = await textFile.read()
+        text_md5 = hashlib.md5(text_blob).hexdigest()
+        task["textFile"] = text_md5
+        task["textFileName"] = textFile.filename
+        text_dir = pjoin(RUNS_DIR, "text", text_md5)
+        if not os.path.exists(text_dir):
+            os.makedirs(text_dir, exist_ok=True)
+            # 保存原始文件
+            file_ext = os.path.splitext(textFile.filename)[1].lower()
+            source_filename = f"source{file_ext}"
+            with open(pjoin(text_dir, source_filename), "wb") as f:
+                f.write(text_blob)
+
+    # 处理用户直接输入
+    if userInput is not None and userInput.strip():
+        input_md5 = hashlib.md5(userInput.encode('utf-8')).hexdigest()
+        task["userInput"] = input_md5
+        input_dir = pjoin(RUNS_DIR, "input", input_md5)
+        if not os.path.exists(input_dir):
+            os.makedirs(input_dir, exist_ok=True)
+            # 保存用户输入为文本文件
+            with open(pjoin(input_dir, "user_input.txt"), "w", encoding="utf-8") as f:
+                f.write(userInput)
+
     if topic is not None:
         task["topic"] = topic
     progress_store[task_id] = task
@@ -443,20 +475,29 @@ async def ppt_gen(task_id: str, rerun=False):
     json.dump(task, open(pjoin(generation_config.RUN_DIR, "task.json"), "w", encoding="utf-8"), ensure_ascii=False)
     progress = ProgressManager(task_id, STAGES)
 
-    # 检查是否有PDF文件或只有topic
+    # 检查文档源类型
     has_pdf = "pdf" in task and task["pdf"] is not None
+    has_text_file = "textFile" in task and task["textFile"] is not None
+    has_user_input = "userInput" in task and task["userInput"] is not None
     has_topic = "topic" in task and task["topic"] is not None
 
+    # 确定文档源目录
     if has_pdf:
         pdf_md5 = task["pdf"]
         parsedpdf_dir = pjoin(RUNS_DIR, "pdf", pdf_md5)
+    elif has_text_file:
+        text_md5 = task["textFile"]
+        parsedpdf_dir = pjoin(RUNS_DIR, "text", text_md5)
+    elif has_user_input:
+        input_md5 = task["userInput"]
+        parsedpdf_dir = pjoin(RUNS_DIR, "input", input_md5)
     elif has_topic:
         # 为topic创建一个唯一的目录
         topic_hash = hashlib.md5(task["topic"].encode('utf-8')).hexdigest()
         parsedpdf_dir = pjoin(RUNS_DIR, "topic", topic_hash)
         os.makedirs(parsedpdf_dir, exist_ok=True)
     else:
-        await progress.fail_stage("No PDF file or topic provided")
+        await progress.fail_stage("No document source provided (PDF, text file, user input, or topic)")
         return
     ppt_image_folder = pjoin(pptx_config.RUN_DIR, "slide_images")
 
@@ -517,7 +558,7 @@ async def ppt_gen(task_id: str, rerun=False):
         # 设置PDF解析阶段上下文
         llm_logger.set_context(task_id, "pdf_parsing")
 
-        # pdf parsing or topic processing
+        # 文档解析处理
         if not os.path.exists(pjoin(parsedpdf_dir, "source.md")):
             if has_pdf:
                 # 解析PDF文件
@@ -526,6 +567,107 @@ async def ppt_gen(task_id: str, rerun=False):
                     parsedpdf_dir,
                     models.marker_model,
                 )
+            elif has_text_file:
+                # 解析文本文件
+                text_md5 = task["textFile"]
+                text_dir = pjoin(RUNS_DIR, "text", text_md5)
+
+                # 查找源文件
+                source_files = [f for f in os.listdir(text_dir) if f.startswith("source")]
+                if not source_files:
+                    await progress.fail_stage("Text source file not found")
+                    return
+
+                source_file = pjoin(text_dir, source_files[0])
+                file_type = os.path.splitext(source_files[0])[1].lower()
+
+                # 根据文件类型解析
+                if file_type == '.md' or file_type == '.markdown':
+                    with open(source_file, 'r', encoding='utf-8') as f:
+                        text_content = f.read()
+                elif file_type == '.txt':
+                    # 检测编码并读取
+                    with open(source_file, 'rb') as f:
+                        raw_data = f.read()
+                        encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+                    with open(source_file, 'r', encoding=encoding) as f:
+                        content = f.read()
+                    # 简单格式化为markdown
+                    text_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
+                elif file_type == '.docx':
+                    # 解析DOCX文件
+                    doc = docx.Document(source_file)
+                    content_parts = [f"# {task.get('textFileName', '文档')}", ""]
+
+                    for paragraph in doc.paragraphs:
+                        text = paragraph.text.strip()
+                        if text:
+                            if paragraph.style.name.startswith('Heading'):
+                                level = paragraph.style.name.replace('Heading ', '')
+                                if level.isdigit():
+                                    content_parts.append(f"{'#' * (int(level) + 1)} {text}")
+                                else:
+                                    content_parts.append(f"## {text}")
+                            else:
+                                content_parts.append(text)
+                            content_parts.append("")
+
+                    text_content = "\n".join(content_parts)
+                else:
+                    # 其他格式，尝试作为纯文本处理
+                    with open(source_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    text_content = f"# {task.get('textFileName', '文档')}\n\n{content}"
+
+                # 保存解析后的内容
+                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
+                    f.write(text_content)
+
+            elif has_user_input:
+                # 处理用户直接输入
+                input_md5 = task["userInput"]
+                input_dir = pjoin(RUNS_DIR, "input", input_md5)
+
+                with open(pjoin(input_dir, "user_input.txt"), "r", encoding="utf-8") as f:
+                    user_content = f.read()
+
+                # 格式化用户输入为markdown
+                lines = user_content.strip().split('\n')
+                formatted_lines = ["# 用户输入文档", ""]
+
+                current_section = []
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        if current_section:
+                            formatted_lines.extend(current_section)
+                            formatted_lines.append("")
+                            current_section = []
+                        continue
+
+                    # 检测是否可能是标题
+                    if (len(line) < 50 and
+                        not line.endswith('.') and
+                        not line.endswith(',') and
+                        not line.endswith(';')):
+                        if current_section:
+                            formatted_lines.extend(current_section)
+                            formatted_lines.append("")
+                            current_section = []
+                        formatted_lines.append(f"## {line}")
+                        formatted_lines.append("")
+                    else:
+                        current_section.append(line)
+
+                if current_section:
+                    formatted_lines.extend(current_section)
+
+                text_content = "\n".join(formatted_lines)
+
+                # 保存格式化后的内容
+                with open(pjoin(parsedpdf_dir, "source.md"), "w", encoding="utf-8") as f:
+                    f.write(text_content)
+
             elif has_topic:
                 # 使用topic作为文本内容
                 text_content = f"# {task['topic']}\n\n请基于这个主题生成演示文稿内容。"

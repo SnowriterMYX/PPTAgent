@@ -67,20 +67,38 @@ export const apiService = {
 
   // 文件上传
   uploadFiles: async (
-    pdfFile: File,
+    pdfFile?: File,
     pptxFile?: File,
     numberOfPages: number = 6,
     topic?: string,
-    onUploadProgress?: (progress: number) => void
+    onUploadProgress?: (progress: number) => void,
+    textFile?: File,
+    userInput?: string
   ): Promise<UploadResponse> => {
     const formData = new FormData();
-    formData.append('pdfFile', pdfFile);
     formData.append('numberOfPages', numberOfPages.toString());
-    
+
+    // 添加PDF文件（如果有）
+    if (pdfFile) {
+      formData.append('pdfFile', pdfFile);
+    }
+
+    // 添加文本文件（如果有）
+    if (textFile) {
+      formData.append('textFile', textFile);
+    }
+
+    // 添加用户输入（如果有）
+    if (userInput) {
+      formData.append('userInput', userInput);
+    }
+
+    // 添加PPT模板文件（如果有）
     if (pptxFile) {
       formData.append('pptxFile', pptxFile);
     }
-    
+
+    // 添加主题（如果有）
     if (topic) {
       formData.append('topic', topic);
     }
