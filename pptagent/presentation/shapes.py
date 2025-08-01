@@ -347,6 +347,7 @@ class Paragraph:
         self.bullet = paragraph.bullet
         if run is None:
             self.idx = -1
+            self.text = ""  # 为无效段落设置空文本，避免AttributeError
             return
         self.font = Font(**paragraph.font.get_attrs())
         self.font.override(Font(**run.font.get_attrs()))

@@ -166,18 +166,23 @@ class CodeExecutor:
                 func = line.split("(")[0]
                 if func not in self.registered_functions:
                     raise SlideEditError(f"The function {func} is not defined.")
-                # only one of clone and del can be used in a row
+                # 检查命令冲突：在单个命令序列中只能使用一种操作类型（clone 或 del）
                 if func.startswith("clone") or func.startswith("del"):
-                    tag = func.split("_")[0]
-                    if (
-                        self.command_history[-1][-1] is None
-                        or self.command_history[-1][-1] == tag
-                    ):
-                        self.command_history[-1][-1] = tag
+                    current_tag = func.split("_")[0]  # 获取操作类型：clone 或 del
+                    previous_tag = self.command_history[-1][-1] if self.command_history else None
+
+                    if previous_tag is None:
+                        # 第一个操作，记录操作类型
+                        self.command_history[-1][-1] = current_tag
+                    elif previous_tag == current_tag:
+                        # 相同操作类型，允许继续
+                        pass
                     else:
+                        # 不同操作类型，抛出错误
                         raise SlideEditError(
-                            "Invalid command: Both 'clone_paragraph' and 'del_paragraph'/'del_image' are used within a single command. "
-                            "Each command must only perform one of these operations based on the quantity_change."
+                            f"Invalid command: Cannot mix '{previous_tag}' and '{current_tag}' operations within a single command sequence. "
+                            f"Each command must only perform one type of operation (either clone or delete). "
+                            f"Current function: {func}, Previous operation type: {previous_tag}"
                         )
                 self.code_history.append([HistoryMark.CODE_RUN_ERROR, line, None])
                 partial_func = partial(self.registered_functions[func], edit_slide)
@@ -187,7 +192,10 @@ class CodeExecutor:
                 self.code_history[-1][0] = HistoryMark.CODE_RUN_CORRECT
             except Exception as e:
                 if not isinstance(e, SlideEditError):
-                    logger.warning(f"Encountered unknown error: {e}")
+                    logger.warning(f"Encountered unknown error in function '{func}': {e}")
+                    logger.debug(f"Function arguments: {line}")
+                else:
+                    logger.debug(f"SlideEditError in function '{func}': {e}")
 
                 trace_msg = traceback.format_exc()
                 if len(self.code_history) != 0:
@@ -354,6 +362,64 @@ def merge_cells(merge_area: list[tuple[int, int, int, int]], table: PPTXGraphicF
             logger.warning(f"Failed to merge cells: {e}")
 
 
+def validate_paragraph_operation(shape, div_id, paragraph_id, operation_name):
+    """
+    验证段落操作的有效性
+
+    Args:
+        shape: 形状对象
+        div_id: 元素ID
+        paragraph_id: 段落ID
+        operation_name: 操作名称（用于错误消息）
+
+    Raises:
+        SlideEditError: 如果操作无效
+    """
+    logger.debug(f"Validating {operation_name} operation on paragraph {paragraph_id} of element {div_id}")
+
+    if not shape.text_frame.is_textframe:
+        raise SlideEditError(
+            f"The element {div_id} does not have a text frame, please check the element id and type of element."
+        )
+
+    # 获取所有段落信息用于调试
+    all_paragraphs = shape.text_frame.paragraphs
+    logger.debug(f"Total paragraphs in element {div_id}: {len(all_paragraphs)}")
+    for i, para in enumerate(all_paragraphs):
+        logger.debug(f"  Paragraph {i}: idx={para.idx}, real_idx={getattr(para, 'real_idx', 'N/A')}, text='{para.text[:50]}...'")
+
+    # 获取有效段落
+    valid_paragraphs = [para for para in all_paragraphs if para.idx != -1]
+    if not valid_paragraphs:
+        raise SlideEditError(
+            f"No valid paragraphs found in element {div_id}. Cannot perform {operation_name} operation. "
+            f"Total paragraphs: {len(all_paragraphs)}, all have idx=-1"
+        )
+
+    # 检查目标段落是否存在且有效
+    target_paragraph = None
+    for para in all_paragraphs:
+        if para.idx == paragraph_id:
+            target_paragraph = para
+            break
+
+    if target_paragraph is None:
+        available_ids = [para.idx for para in valid_paragraphs]
+        logger.warning(f"Paragraph {paragraph_id} not found in element {div_id}. Available IDs: {available_ids}")
+        raise SlideEditError(
+            f"Cannot find paragraph {paragraph_id} in element {div_id} for {operation_name} operation. "
+            f"Available paragraph IDs: {available_ids}"
+        )
+
+    if target_paragraph.idx == -1:
+        raise SlideEditError(
+            f"Cannot perform {operation_name} on invalid paragraph {paragraph_id} of element {div_id}."
+        )
+
+    logger.debug(f"Validation successful for {operation_name} operation on paragraph {paragraph_id}")
+    return target_paragraph
+
+
 # api functions
 def del_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
     """
@@ -368,22 +434,12 @@ def del_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
         SlideEditError: If the paragraph is not found.
     """
     shape = element_index(slide, div_id)
-    if not shape.text_frame.is_textframe:
-        raise SlideEditError(
-            f"The element {shape.shape_idx} of slide {slide.slide_idx} does not have a text frame, please check the element id and type of element."
-        )
-    for para in shape.text_frame.paragraphs:
-        if para.idx == paragraph_id:
-            shape.text_frame.paragraphs.remove(para)
-            shape._closures[ClosureType.DELETE].append(
-                Closure(partial(del_para, para.real_idx), para.real_idx)
-            )
-            return
-    else:
-        raise SlideEditError(
-            f"Cannot find the paragraph {paragraph_id} of the element {div_id},"
-            "may refer to a non-existed paragraph or you haven't cloned enough paragraphs beforehand."
-        )
+    target_paragraph = validate_paragraph_operation(shape, div_id, paragraph_id, "delete")
+
+    shape.text_frame.paragraphs.remove(target_paragraph)
+    shape._closures[ClosureType.DELETE].append(
+        Closure(partial(del_para, target_paragraph.real_idx), target_paragraph.real_idx)
+    )
 
 
 def del_image(slide: SlidePage, figure_id: int):
@@ -416,27 +472,15 @@ def replace_paragraph(slide: SlidePage, div_id: int, paragraph_id: int, text: st
         SlideEditError: If the paragraph is not found.
     """
     shape = element_index(slide, div_id)
-    if not shape.text_frame.is_textframe:
-        raise SlideEditError(
-            f"The element {shape.shape_idx} of slide {slide.slide_idx} does not have a text frame, please check the element id and type of element."
+    target_paragraph = validate_paragraph_operation(shape, div_id, paragraph_id, "replace")
+
+    target_paragraph.text = text
+    shape._closures[ClosureType.REPLACE].append(
+        Closure(
+            partial(replace_para, target_paragraph.real_idx, text),
+            target_paragraph.real_idx,
         )
-    for para in shape.text_frame.paragraphs:
-        if para.idx == paragraph_id:
-            para.text = text
-            shape._closures[ClosureType.REPLACE].append(
-                Closure(
-                    partial(replace_para, para.real_idx, text),
-                    para.real_idx,
-                )
-            )
-            return
-    else:
-        raise SlideEditError(
-            f"Cannot find the paragraph {paragraph_id} of the element {div_id},"
-            "Please: "
-            "1. check if you refer to a non-existed paragraph."
-            "2. check if you already deleted it."
-        )
+    )
 
 
 def replace_image(slide: SlidePage, doc: Document, img_id: int, image_path: str):
@@ -494,26 +538,23 @@ def clone_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
     Mention: the cloned paragraph will have a paragraph_id one greater than the current maximum in the parent element.
     """
     shape = element_index(slide, div_id)
-    if not shape.text_frame.is_textframe:
-        raise SlideEditError(
-            f"The element {shape.shape_idx} of slide {slide.slide_idx} does not have a text frame, please check the element id and type of element."
+    target_paragraph = validate_paragraph_operation(shape, div_id, paragraph_id, "clone")
+
+    # 获取有效段落的最大索引
+    valid_indices = [para.idx for para in shape.text_frame.paragraphs if para.idx != -1]
+    max_idx = max(valid_indices)
+
+    # 克隆段落
+    cloned_para = deepcopy(target_paragraph)
+    cloned_para.idx = max_idx + 1
+    cloned_para.real_idx = len(shape.text_frame.paragraphs)
+
+    shape.text_frame.paragraphs.append(cloned_para)
+    shape._closures[ClosureType.CLONE].append(
+        Closure(
+            partial(clone_para, target_paragraph.real_idx),
+            target_paragraph.real_idx,
         )
-    max_idx = max([para.idx for para in shape.text_frame.paragraphs])
-    for para in shape.text_frame.paragraphs:
-        if para.idx != paragraph_id:
-            continue
-        shape.text_frame.paragraphs.append(deepcopy(para))
-        shape.text_frame.paragraphs[-1].idx = max_idx + 1
-        shape.text_frame.paragraphs[-1].real_idx = len(shape.text_frame.paragraphs) - 1
-        shape._closures[ClosureType.CLONE].append(
-            Closure(
-                partial(clone_para, para.real_idx),
-                para.real_idx,
-            )
-        )
-        return
-    raise SlideEditError(
-        f"Cannot find the paragraph {paragraph_id} of the element {div_id}, may refer to a non-existed paragraph."
     )
 
 
