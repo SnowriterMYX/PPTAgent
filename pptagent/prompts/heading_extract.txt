@@ -1,16 +1,16 @@
-You are a Markdown formatting assistant. I'll provide you with a Markdown text containing headings with potentially inconsistent levels (#, ##, etc.). Your task is to identify and extract the top-level headings based on their semantic and logical structure.
+你是一个Markdown格式化助手。我将为你提供一个包含可能不一致级别（#，##等）标题的Markdown文本。你的任务是根据它们的语义和逻辑结构，识别并提取顶级标题。
 
-Your task:
-1. Analyze the logical structure of the headings.
-2. Identify top-level headings:
-   - These are primary sections, typically numbered like "1. Introduction", "2. Methodology", or unnumbered titles that semantically represent the highest level.
-   - Use the numbering as a clue: headings with a single number followed by a dot (e.g., "1.", "2.") are considered top-level.
-   - If some headings lack numbering (while others may have it), rely on semantic context to determine if they are top-level.
-   - Aim for a reasonable count of top-level headings, typically between 3 and 10, based on the document’s structure.
-3. Return only the top-level headings as a list, without modifying their content.
+你的任务：
+1. 分析标题的逻辑结构。
+2. 识别顶级标题：
+   - 这些是主要部分，通常像“1. 引言”、“2. 方法论”这样编号，或者是语义上代表最高级别的未编号标题。
+   - 使用编号作为线索：带有点号的单个数字（例如，“1.”，“2.”）的标题被视为顶级。
+   - 如果某些标题缺少编号（而其他标题可能有），则依靠语义上下文来确定它们是否是顶级的。
+   - 根据文档的结构，力求顶级标题的数量合理，通常在3到10个之间。
+3. 仅返回顶级标题作为列表，不修改其内容。
 
-Here's the heading list to process:
+这是要处理的标题列表：
 
 {{headings}}
 
-Output: Please provide the extracted top-level headings in JSON format as a list:
+输出：请以JSON格式的列表形式提供提取的顶级标题：

@@ -1,10 +1,10 @@
-Given a Markdown table and nearby chunks from a document, write a new, clear, and concise caption that accurately describes the table's content. The nearby chunks may be of unreliable quality (e.g., vague, incomplete, or misleading), so prioritize the information in the table itself when crafting the new caption.
+给定一个Markdown表格和文档中附近的文本块，编写一个新的、清晰简洁的标题，准确描述表格内容。附近的文本块质量可能不可靠（例如，模糊、不完整或误导），因此在撰写新标题时，请优先考虑表格本身的信息。
 
-Input:
-- Markdown table:
+输入:
+- Markdown表格:
 {{markdown_content}}
 
-- Nearby chunks:
+- 附近的文本块:
 {{markdown_caption}}
 
-Provide only the new caption as your response, start with "Table:" and less than 50 words.
+请仅提供新标题作为您的回应，以“表格：”开头，且少于50个词。

@@ -1,64 +1,64 @@
 system_prompt: |
-  You are a multifunctional content processing and code-generation assistant specializing in parsing HTML structures and content frameworks. Your task is to convert slide content and editing requirements into accurate API call sequences. You must strictly follow the rules to ensure precision and consistency with the input logic.
+  你是一个多功能内容处理与代码生成助手，专注于解析HTML结构和内容框架。你的任务是将幻灯片内容和编辑需求，转换为精确的API调用序列。你必须严格遵守规则，以确保结果的精确性并与输入逻辑保持一致。
 template: |
-  Task Description:
-  Generate an API call sequence based on the input slide code and available content to replace the existing slide content. Follow the rules below:
+  任务描述:
+  根据输入的幻灯片代码和可用内容，生成一个API调用序列，以替换现有的幻灯片内容。请遵循以下规则：
 
-  Available API Functions:
+  可用API函数:
   {{api_docs}}
 
-  Rules and Requirements
-  1. Slide Content Generation Rules
-    •	Use the structure defined in the schema to generate content.
-    •	Extract key information from text and images_info to generate core elements (e.g., slide_title, main_content). Ensure the content is semantically consistent and concise.
-    •	Supportive elements (e.g., logo) should only be generated if relevant information is provided.
+  规则与要求
+  1. 幻灯片内容生成规则
+    •	使用“结构纲要”中定义的结构来生成内容。
+    •	从“参考文本”和“图片信息”中提取关键信息，以生成核心元素（如：幻灯片标题、主要内容）。确保内容在语义上连贯且简洁。
+    •	仅在提供了相关信息时，才生成辅助性元素（如：标志）。
 
-  2. HTML Structure Rules
-    •	Determine the parent-child relationship of elements based on indentation in the HTML structure.
-    •	Ensure all <span> and <img> elements are fully processed, avoiding omissions.
+  2. HTML结构规则
+    •	根据HTML结构中的缩进，来确定元素的父子关系。
+    •	确保所有的 <span> 和 <img> 元素都得到完全处理，避免遗漏。
 
-  3. Quantity Adjustment Rules
-    •	Adding Elements:
-    •	Use clone_paragraph to add paragraphs. The new paragraph’s paragraph_id should be the current maximum paragraph_id + 1, while keeping the span_id unchanged.
-    •	Prioritize cloning paragraphs with existing special styles (e.g., bold, color).
-    •	Removing Elements:
-    •	Use del_span or del_image to reduce content. Always remove <span> elements from the end of the paragraph first.
-    •	Maintaining Quantity:
-    •	If the quantity remains unchanged, only replace the content without cloning or deleting elements.
+  3. 数量调整规则
+    •	增加元素:
+    •	使用 `clone_paragraph` 来增加段落。新段落的 `paragraph_id` 应为当前最大的 `paragraph_id` + 1，同时保持 `span_id` 不变。
+    •	优先克隆那些已存在特殊样式（如：加粗、颜色）的段落。
+    •	移除元素:
+    •	使用 `del_span` 或 `del_image` 来减少内容。始终优先从段落末尾移除 <span> 元素。
+    •	保持数量:
+    •	如果数量保持不变，则仅替换内容，不克隆或删除元素。
 
-  4. Content Replacement Rules
-    •	Text Replacement:
-    •	Use replace_span to replace <span> content within a paragraph. Add styles (e.g., bold, color) where needed.
-    •	Image Replacement:
-    •	Use replace_image to replace image paths, ensuring the images match the input.
+  4. 内容替换规则
+    •	文本替换:
+    •	使用 `replace_span` 来替换段落内的 <span> 内容。在需要时添加样式（如：加粗、颜色）。
+    •	图片替换:
+    •	使用 `replace_image` 来替换图片路径，确保图片与输入匹配。
 
-  5. Operation Restrictions
-    •	Each API call must perform only one type of operation, either clone or del, but not both.
-    •	Ensure the generated API call sequence strictly follows the input logic and avoids generating unrelated content.
+  5. 操作限制
+    •	每次API调用只能执行一种类型的操作，即克隆或删除，但不能同时执行两者。
+    •	确保生成的API调用序列严格遵循输入逻辑，避免生成不相关的内容。
 
-  Example Output:
-  # Replace title content
-  replace_span(0, 0, 0, "New Slide Title")
+  示例输出:
+  # 替换标题内容
+  replace_span(0, 0, 0, "新的幻灯片标题")
 
-  # Add a new main content paragraph
-  clone_paragraph(1, 0)  # The new paragraph's paragraph_id is 2, based on the current max paragraph_id of 1
-  replace_span(1, 2, 0, "Generated content based on the input text")
+  # 添加一个新的主要内容段落
+  clone_paragraph(1, 0)  # 新段落的 paragraph_id 是 2, 基于当前最大的 paragraph_id 为 1
+  replace_span(1, 2, 0, "基于输入文本生成的内容")
 
-  # Delete unnecessary content from the paragraph
+  # 从段落中删除不必要的内容
   del_span(1, 1, 0)
 
-  # Replace project logo
+  # 替换项目标志
   replace_image(2, "images/new_logo.png")
 
-  Input:
-    -	Schema: {{schema}}
-    -	Outline: {{outline}}
-    -	Metadata: {{metadata}}
-    -	Reference Text: {{text}}
-    -	Image Information: {{images_info}}
-    -	Current Slide Content: {{edit_target}}
+  输入:
+    -	结构纲要: {{schema}}
+    -	大纲: {{outline}}
+    -	元数据: {{metadata}}
+    -	参考文本: {{text}}
+    -	图片信息: {{images_info}}
+    -	当前幻灯片内容: {{edit_target}}
 
-  Output: Output only the API call sequence. Add comments for each API call, explaining the purpose of the operation and the corresponding element.
+  输出: 仅输出API调用序列。为每个API调用添加注释，解释操作的目的和对应的元素。
 
 jinja_args:
   - schema

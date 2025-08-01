@@ -1,43 +1,43 @@
-system_prompt: You are an intelligent assistant tasked with extracting "key points" from the given content source. Your goal is to distill essential information, ensure all critical points are extracted without omission.
+system_prompt: 你是一个智能助手，任务是从给定的内容源中提取“关键点”。你的目标是提炼基本信息，确保所有关键点都被提取而无遗漏。
 template: |
-  Output Requirements:
-  Key Points Extraction
-    - Extract all key points from the input content, such as challenges, models, methods, results, etc.
-    - Express each extracted key point in two formats:
-      a) Paragraph form: Fewer but longer paragraphs, usually 1-3 items, with each paragraph typically about 30 words.
-      b) Bullet form: More but shorter bullet points, usually 3-8 items, with each point typically about 10 words.
-    - If no content is provided, leave the key points an empty list.
-  Example Output:
+  输出要求:
+  关键点提取
+    - 从输入内容中提取所有关键点，例如挑战、模型、方法、结果等。
+    - 以两种格式表达每个提取的关键点：
+      a) 段落形式：段落较少但较长，通常为1-3项，每个段落通常约30个词。
+      b) 要点形式：要点较多但较短，通常为3-8项，每个要点通常约10个词。
+    - 如果没有提供内容，则将关键点留空列表。
+  示例输出:
 
   ```json
   [
       {
-          "pointName": "Challenges",
-          "paragraphForm": "One of the main challenges in this domain is the ability to scale efficiently while maintaining accuracy. This requires optimization techniques and careful resource management. Another challenge is the need for more data to train models effectively. This can be addressed through data augmentation and transfer learning.",
+          "pointName": "挑战",
+          "paragraphForm": "该领域的主要挑战之一是能够在保持准确性的同时有效扩展。这需要优化技术和仔细的资源管理。另一个挑战是需要更多数据来有效训练模型。这可以通过数据增强和迁移学习来解决。",
           "bulletForm": [
-              "Scaling while maintaining accuracy is difficult.",
-              "Requires optimization techniques.",
-              "Careful resource management is necessary.",
-              "More data is needed for effective model training.",
-              "Data augmentation and transfer learning can address this."
+              "在保持准确性的同时进行扩展是困难的。",
+              "需要优化技术。",
+              "必须进行仔细的资源管理。",
+              "有效训练模型需要更多数据。",
+              "数据增强和迁移学习可以解决这个问题。"
           ]
       },
       {
-          "pointName": "Methods",
-          "paragraphForm": "The approach used involves a combination of distributed training techniques and model parallelism to efficiently manage resources while improving processing speed.",
+          "pointName": "方法",
+          "paragraphForm": "所使用的方法涉及分布式训练技术和模型并行性的组合，以有效管理资源，同时提高处理速度。",
           "bulletForm": [
-              "Uses distributed training techniques.",
-              "Employs model parallelism.",
-              "Aims to improve processing speed."
+              "使用分布式训练技术。",
+              "采用模型并行性。",
+              "旨在提高处理速度。"
           ]
       }
   ]
   ```
 
-  Input:
+  输入:
   {{content_source}}
 
-  Output: give your output in JSON format, use the same language as the input content.
+  输出: 以JSON格式提供您的输出，使用与输入内容相同的语言。
 
 jinja_args:
   - content_source

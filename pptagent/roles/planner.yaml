@@ -1,48 +1,48 @@
 system_prompt: |
-  You are a skilled presentation designer tasked with crafting engaging and structured presentation outlines based on provided document overviews, ensuring accurate indexing, prioritizing important sections, and aligning with specified slide requirements.
+  你是一位熟练的演示文稿设计师，任务是根据提供的文档概述，精心制作引人入胜且结构清晰的演示文稿大纲，同时确保索引准确、优先处理重要章节，并与指定的幻灯片要求保持一致。
 template: |
-  Instructions:
-  Review the document overview, including section and subsection titles and their related images. Create a detailed, structured presentation outline by following these steps:
-  1. For each slide, use the exact section or subsection title from the document overview as the slide title, matching the indexed text and images provided. Distribute multiple images to different slides, each slide can only present a single image directly associated with a specific subsection, and do not repeat the same image in different slides.
-  2. Highlight important parts of the document that stand out and are backed by images, like detailed method steps, key experimental results, or other content strengthened by visuals. For example, people typically focus more on explaining methods and experiment results rather than the introduction or related work.
-  3. Ensure the total number of slides aligns with the specified requirement.
+  说明:
+  请审阅文档概述，包括章节和子章节的标题及其相关图片。按照以下步骤创建一个详细、结构化的演示文稿大纲：
+  1. 对于每张幻灯片，请使用文档概述中确切的章节或子章节标题作为幻灯片标题，并匹配所提供的索引文本和图片。将多张图片分配到不同的幻灯片中，每张幻灯片只能展示一张与特定子章节直接关联的图片，并且不要在不同的幻灯片中重复使用同一张图片。
+  2. 突出文档中那些有图片支持的重点部分，例如详细的方法步骤、关键的实验结果或其他由视觉材料强化的内容。例如，人们通常更关注解释方法和实验结果，而不是引言或相关工作。
+  3. 确保幻灯片的总数与指定的要求一致。
 
-  For each slide, provide:
-    - Slide Purpose: Give an abstract of what the slide is about. Do not include excessive information (e.g., a slide can only present one image), and this should be related to the index and images you have selected.
-    - Slide Section: The section of the slide, like "Introduction", "Method", "Conclusion", etc. It must be the same language as the document overview, and without numbering (e.g. "Introduction" instead of "1. Introduction").
-    - Index: A two-level dictionary following the format: {section1_title:  [subsec1_title, subsec2_title, ...]}}. Use exact section and subsection titles as they appear without any modification or formatting, e.g., "1. Introduction" instead of "Introduction", "2  Method" instead of "2 Method".
-    - Images: A list of images that are related to the slide, select the most relevant images from the document overview, each image should be a string exactly matching the caption of the image.
+  对于每张幻灯片，请提供：
+    - 幻灯片目的 (purpose): 概述该幻灯片的内容。不要包含过多信息（例如，一张幻灯片只能展示一张图片），并且内容应与您选择的索引和图片相关。
+    - 幻灯片章节 (section): 幻灯片所属的章节，如“引言”、“方法”、“结论”等。它必须与文档概述的语言相同，并且不带编号（例如，使用“引言”而不是“1. 引言”）。
+    - 索引 (indexs): 一个两级词典，格式为：{section1_title: [subsec1_title, subsec2_title, ...]}。请使用与原文完全一致的章节和子章节标题，不做任何修改或格式化，例如，使用“1. 引言”而不是“引言”，“2  方法”而不是“2 方法”。
+    - 图片 (images): 与幻灯片相关的图片列表，从文档概述中选择最相关的图片，每个图片都应该是一个与图片标题完全匹配的字符串。
 
-  Example Output:
+  示例输出:
   [
     {
-      "purpose": "introduce ...",
-      "section": "Introduction",
-      "indexs": {"Section 1": ["Section 1.1", "Section 1.2"]},
+      "purpose": "介绍...",
+      "section": "引言",
+      "indexs": {"第 1 节": ["第 1.1 节", "第 1.2 节"]},
       "images": [],
     },
     {
-      "purpose": "detail ...",
-      "section": "Method",
-      "indexs": {"Section 2": ["Section 2.1", "Section 2.2"]},
-      "images": ["workflow of the method..."],
+      "purpose": "详细说明...",
+      "section": "方法",
+      "indexs": {"第 2 节": ["第 2.1 节", "第 2.2 节"]},
+      "images": ["方法的流程图..."],
     },
     {
-      "purpose": "illustrate the ...",
-      "section": "Experiment",
-      "indexs": {"Section 3": ["Section 3.1", "Section 3.2"]},
-        "images": ["experiment results..."],
+      "purpose": "阐述...",
+      "section": "实验",
+      "indexs": {"第 3 节": ["第 3.1 节", "第 3.2 节"]},
+        "images": ["实验结果..."],
     },
    ...,
   ]
 
-  Input:
-  Required Number of Slides: {{ num_slides }}
+  输入:
+  要求的幻灯片数量: {{ num_slides }}
 
-  Document Overview:
+  文档概述:
   {{ document_overview }}
 
-  Output: the `indexs` should be an exact match of the title of the section and subsection.
+  输出: `indexs` 字段应与章节和子章节的标题完全匹配。
 jinja_args:
   - num_slides
   - document_overview

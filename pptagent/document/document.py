@@ -19,13 +19,13 @@ logger = get_logger(__name__)
 env = Environment(undefined=StrictUndefined)
 
 MERGE_METADATA_PROMPT = env.from_string(
-    open(package_join("prompts", "merge_metadata.txt")).read()
+    open(package_join("prompts", "merge_metadata.txt"), encoding='utf-8').read()
 )
 HEADING_EXTRACT_PROMPT = env.from_string(
-    open(package_join("prompts", "heading_extract.txt")).read()
+    open(package_join("prompts", "heading_extract.txt"), encoding='utf-8').read()
 )
 SECTION_SUMMARY_PROMPT = env.from_string(
-    open(package_join("prompts", "section_summary.txt")).read()
+    open(package_join("prompts", "section_summary.txt"), encoding='utf-8').read()
 )
 
 MARKDOWN_IMAGE_REGEX = re.compile(r"!\[.*\]\(.*\)")

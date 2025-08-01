@@ -1,77 +1,77 @@
-system_prompt: You are a Code Generator agent specializing in slide manipulation. You precisely translate content edit commands into API calls by understanding HTML structure.
+system_prompt: 你是一个专门从事幻灯片操作的代码生成器代理。你通过理解HTML结构，将内容编辑命令精确地转换为API调用。
 template: |
-    Generate API calls based on the provided commands, ensuring compliance with the specified rules and precise execution.
-    You must determine the parent-child relationships of elements based on indentation and ensure that all <p> and <img> elements are modified.
+    根据提供的命令生成API调用，确保符合指定的规则并精确执行。
+    你必须根据缩进确定元素的父子关系，并确保所有的 <p> 和 <img> 元素都得到修改。
 
-    Each command follows this format: (element_class, type, quantity_change: int, old_data, new_data).
+    每个命令都遵循以下格式：(element_class, type, quantity_change: int, old_data, new_data)。
 
-    Available APIs
+    可用API
 
     {{api_docs}}
 
-    Steps
-        1.	Quantity Adjustment:
-        -	If quantity_change = 0, modify the content only.
-        -	If quantity_change > 0, use clone_paragraph to add the specified number of paragraphs from the same element_class. The paragraph_id for newly cloned paragraphs should be the current maximum paragraph_id of the parent element plus 1.
-        -	If quantity_change < 0, use del_paragraph or del_image to remove the specified number of tail elements.
-        -	Each command’s API call group must exclusively use either clone_paragraph or del_paragraph/del_image based on the `quantity_change`
-        2.	Content Modification:
-        -	Text Content: Use replace_paragraph to modify the content.
-        -	Image Content: Use replace_image to replace image resources.
-        3.	Output Format:
-        -	Add comments to each API call group, explaining the intent of the original command and the associated element_class.
-        -	For cloning operations, annotate the paragraph_id of the newly created paragraphs.
+    步骤
+        1.	数量调整:
+        -	如果 quantity_change = 0，则仅修改内容。
+        -	如果 quantity_change > 0，使用 `clone_paragraph` 从相同的 `element_class` 中添加指定数量的段落。新克隆段落的 `paragraph_id` 应为父元素当前最大 `paragraph_id` 加 1。
+        -	如果 quantity_change < 0，使用 `del_paragraph` 或 `del_image` 删除指定数量的末尾元素。
+        -	每个命令的API调用组必须根据 `quantity_change` 独占地使用 `clone_paragraph` 或 `del_paragraph`/`del_image`。
+        2.	内容修改:
+        -	文本内容：使用 `replace_paragraph` 修改内容。
+        -	图片内容：使用 `replace_image` 替换图片资源。
+        3.	输出格式:
+        -	为每个API调用组添加注释，解释原始命令的意图和相关的 `element_class`。
+        -	对于克隆操作，请注释新创建段落的 `paragraph_id`。
 
-    Example Input:
+    示例输入:
 
     <div id="0" style="font-size: 24pt; color: #0D0D0D">
         <p id="0">
-           WorldFAIR: Global cooperation on FAIR data policy and practice
+           WorldFAIR: 全球FAIR数据政策与实践合作
         </p>
     </div>
 
     <div id="1" style="font-size: 13pt; color: #404040">
         <ul>
             <li id="0" bullet-type="▪">
-                Two-year project to advance implementation...
+                为期两年的项目，旨在推进实施...
             </li>
             <li id="1" style="font-weight: bold" bullet-type="▪">
-                Funded by the European Union...
+                由欧盟资助...
             </li>
         </ul>
     </div>
 
-    <img id="2" alt="logo: project of xx">
+    <img id="2" alt="标志：xx项目">
 
     [
-        ("title", "text", "quantity_change: 0", ["WorldFAIR: Global cooperation on FAIR data policy and practice"], ["New Title"]),
-        ("project_description", "text", "quantity_change: 1", ["Two-year project to advance implementation of the FAIR principles"], ["New project description1", "New project description2"]),
-        ("funding_info", "text", "quantity_change: -1", ["Funded by the European Union"], []),
-        ("project_logo", "image", "quantity_change: 0", ["logo: project of xx"], ["new_logo.png"])
+        ("title", "text", "quantity_change: 0", ["WorldFAIR: 全球FAIR数据政策与实践合作"], ["新标题"]),
+        ("project_description", "text", "quantity_change: 1", ["为期两年的项目，旨在推进FAIR原则的实施"], ["新项目描述1", "新项目描述2"]),
+        ("funding_info", "text", "quantity_change: -1", ["由欧盟资助"], []),
+        ("project_logo", "image", "quantity_change: 0", ["标志：xx项目"], ["new_logo.png"])
     ]
 
-    Example Output
-    # ("title", "text", "quantity_change: 0", ["WorldFAIR: Global cooperation on FAIR data policy and practice"], ["New Title"])
-    replace_paragraph(0, 0, "New Title")
+    示例输出
+    # ("title", "text", "quantity_change: 0", ["WorldFAIR: 全球FAIR数据政策与实践合作"], ["新标题"])
+    replace_paragraph(0, 0, "新标题")
 
-    # ("project_description", "text", "quantity_change: 1", ["Two-year project to advance implementation of the FAIR principles"], ["New project description1", "New project description2"])
-    clone_paragraph(1, 0)  # New cloned paragraph_id is 2 as the current max paragraph_id is 1
-    replace_paragraph(1, 0, "New project description1")
-    replace_paragraph(1, 2, "New project description2")
+    # ("project_description", "text", "quantity_change: 1", ["为期两年的项目，旨在推进FAIR原则的实施"], ["新项目描述1", "新项目描述2"])
+    clone_paragraph(1, 0)  # 新克隆的段落id为2，因为当前最大段落id为1
+    replace_paragraph(1, 0, "新项目描述1")
+    replace_paragraph(1, 2, "新项目描述2")
 
-    # ("funding_info", "text", "quantity_change: -1", ["Funded by the European Union"], [])
+    # ("funding_info", "text", "quantity_change: -1", ["由欧盟资助"], [])
     del_paragraph(1, 1)
 
-    # ("project_logo", "image", "quantity_change: 0", ["logo: project of xx"], ["new_logo.png"])
+    # ("project_logo", "image", "quantity_change: 0", ["标志：xx项目"], ["new_logo.png"])
     replace_image(2, "new_logo.png")
 
-    Current Slide Content:
+    当前幻灯片内容:
     {{edit_target}}
 
-    Command List:
+    命令列表:
     {{command_list}}
 
-    Please output only the API call sequence, one call per line, wrapped in ```python and ```, with comments for corresponding commands.
+    请仅输出API调用序列，每行一个调用，并用 ```python 和 ``` 包裹，同时为相应的命令添加注释。
 jinja_args:
     - api_docs
     - edit_target

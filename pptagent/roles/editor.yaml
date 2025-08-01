@@ -1,45 +1,45 @@
-system_prompt: You are an expert Editor agent. Transform reference text and images into slide content, following schema rules and using only provided materials. Ensure the content is engaging and within the character limit. Always generate content in the same language as the reference text.
+system_prompt: 你是一位专业的编辑代理。将参考文本和图片转换为幻灯片内容，遵循模式规则，并且只使用提供的材料。确保内容引人入胜且在字数限制内。始终使用与参考文本相同的语言生成内容。
 template: |
-  Task: Generate engaging slide content based on the provided schema and reference materials.
+  任务：根据提供的模式和参考材料生成引人入胜的幻灯片内容。
 
-  Requirements:
-  1. Content Generation Rules:
-    - Follow default_quantity for elements, adjust when necessary and it is not 1, you can properly rewrite the content to fit the schema
-    - Ensure text content meets character limits
-    - Generated text should use concise and impactful presentation style
+  要求:
+  1. 内容生成规则:
+    - 遵循元素的 `default_quantity`，在必要且不为1时进行调整，你可以适当地重写内容以适应模式。
+    - 确保文本内容符合字符限制。
+    - 生成的文本应使用简洁有力的演示风格。
 
-  2. Core Elements:
-    - Must extract essential content from reference text (e.g., slide_title, main_content) and maintain semantic consistency
-    - Must include images that support the main content (e.g., diagrams for explanations, visuals directly discussed in text)
+  2. 核心元素:
+    - 必须从参考文本中提取基本内容（例如，幻灯片标题，主要内容）并保持语义一致性。
+    - 必须包含支持主要内容的图片（例如，用于解释的图表，文本中直接讨论的视觉效果）。
 
-  3. Supporting Elements (e.g., presenters, logo images):
-    - Generate only when relevant content exists in reference materials
+  3. 辅助元素（例如，演讲者，标志图片）:
+    - 仅当参考材料中存在相关内容时才生成。
 
-  Generate content for each element and output in the following format:
+  为每个元素生成内容，并按以下格式输出：
   {
     "element1": {
-      "data": ["text1", "text2"] for text elements
-            or ["/path/to/image", "..."] for image elements
+      "data": ["文本1", "文本2"] (对于文本元素)
+            或 ["/path/to/image", "..."] (对于图片元素)
     },
   }
 
-  Input:
-  Presentation Outline:
+  输入:
+  演示大纲:
   {{outline}}
 
-  Current Slide Description:
+  当前幻灯片描述:
   {{slide_description}}
 
-  Metadata of Presentation:
+  演示文稿元数据:
   {{metadata}}
 
-  Slide Content Source:
+  幻灯片内容来源:
   {{slide_content}}
 
-  Schema:
+  模式:
   {{schema}}
 
-  Output: Ensure the generated content strictly adheres to the schema specifications, follows the slide style, reader-friendly, and use the same language as the reference text.
+  输出: 确保生成的内容严格遵守模式规范，遵循幻灯片风格，对读者友好，并使用与参考文本相同的语言。
 jinja_args:
   - outline
   - slide_description

@@ -27,9 +27,9 @@ from pptagent.utils import (
 logger = get_logger(__name__)
 
 CATEGORY_SPLIT_TEMPLATE = Template(
-    open(package_join("prompts", "category_split.txt")).read()
+    open(package_join("prompts", "category_split.txt"), encoding='utf-8').read()
 )
-ASK_CATEGORY_PROMPT = open(package_join("prompts", "ask_category.txt")).read()
+ASK_CATEGORY_PROMPT = open(package_join("prompts", "ask_category.txt"), encoding='utf-8').read()
 
 
 def check_schema(schema: dict | Any, slide: SlidePage):

@@ -10,7 +10,7 @@ from pptagent.utils import get_logger, package_join, pbasename, pexists, pjoin
 logger = get_logger(__name__)
 
 LENGTHY_REWRITE_PROMPT = Template(
-    open(package_join("prompts", "lengthy_rewrite.txt")).read(),
+    open(package_join("prompts", "lengthy_rewrite.txt"), encoding='utf-8').read(),
     undefined=StrictUndefined,
 )
 

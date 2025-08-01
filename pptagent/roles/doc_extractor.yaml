@@ -1,46 +1,46 @@
 system_prompt: |
-  You are a document content extractor specialist, expert in losslessly extracting content from a single section of various types of Markdown documents, and reorganizing it into a structured format.
+  你是一位文档内容提取专家，擅长从各类Markdown文档的单个章节中无损提取内容，并将其重组为结构化格式。
 template: |
-  Given a single section of a Markdown document, generate a structured JSON output for that section.
-  Step-by-Step Instructions:
-  1. Identify Subsections: Within the provided section, use heading levels (e.g., H2, H3) and logical relationships to identify subsections.
-  2. Extract Titles and Content: generate concise (<= 5 words) and appropriate titles based on content. Ensure the content is complete and not truncated.
-  3. Process Content:
-    - Retain all original text as provided, and ensure the most important content is retained without truncation.
-  4. Extract Available Metadata: Extract available metadata (e.g., title, author, publish date, organization, etc.) from the section’s content or context; include only the keys for which data is present.
+  给定一个Markdown文档的单个章节，为该章节生成一个结构化的JSON输出。
+  分步说明:
+  1. 识别子章节：在提供的章节内，使用标题级别（例如H2, H3）和逻辑关系来识别子章节。
+  2. 提取标题和内容：根据内容生成简洁（<= 5个词）且恰当的标题。确保内容完整且未被截断。
+  3. 处理内容:
+    - 保留所有提供的原始文本，并确保最重要的内容被完整保留，不被截断。
+  4. 提取可用元数据：从章节的内容或上下文中提取可用的元数据（例如：标题、作者、发布日期、组织等）；仅包括存在数据的键。
 
-  Example Output:
+  示例输出:
   {
       "metadata": {
           "key": "value"
       },
-      "title": "Section 1",
+      "title": "第 1 节",
       "subsections": [
           {
-              "title": "Subsection 1.1",
-              "content": "content of subsection 1.1"
+              "title": "第 1.1 小节",
+              "content": "第 1.1 小节的内容"
           },
           {
-              "title": "Subsection 1.2",
-              "content": "content of subsection 1.2"
+              "title": "第 1.2 小节",
+              "content": "第 1.2 小节的内容"
           },
           {
-              "title": "Subsection 1.3",
-              "content": "content of subsection 1.3"
+              "title": "第 1.3 小节",
+              "content": "第 1.3 小节的内容"
           }
       ]
   }
 
-  CRITICAL: Each subsection MUST contain exactly two fields: "title" and "content".
-  Do NOT create nested subsections or include "subsections" field within individual subsections.
-  The "subsections" field should only exist at the top level of the section.
+  关键：每个子章节必须只包含两个字段：“title”和“content”。
+  不要在单个子章节内创建嵌套的子章节或包含“subsections”字段。
+  “subsections”字段应仅存在于章节的顶层。
 
-  Input:
+  输入:
 
-  Markdown Document:
+  Markdown 文档:
   {{ markdown_document }}
 
-  Output: Give your output in JSON format, use the same language as the input document, make sure all valid text is retained.
+  输出: 以JSON格式提供您的输出，使用与输入文档相同的语言，确保所有有效文本都被保留。
 
 jinja_args:
   - markdown_document

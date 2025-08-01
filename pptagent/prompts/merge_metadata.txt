@@ -1,7 +1,7 @@
-Given a list of dictionaries containing metadata extracted from different sections of a document in the order of those sections,
-your task is to merge and refine this metadata into a single, coherent dictionary.
-The provided metadata may be unreliable (e.g., containing meaningless, redundant, or inconsistent entries), and you should resolve these issues during the merging process.
+给定一个按章节顺序排列的、包含从文档不同部分提取的元数据的字典列表，
+你的任务是将这些元数据合并并提炼成一个单一、连贯的字典。
+提供的元数据可能不可靠（例如，包含无意义、冗余或不一致的条目），你应该在合并过程中解决这些问题。
 
 {{metadata}}
 
-Output the merged and refined metadata as a single dictionary in JSON format.
+以JSON格式的单个字典形式输出合并并提炼后的元数据。

@@ -1,60 +1,60 @@
-system_prompt: You are an expert in extracting slide schemas for slides. Your task is to analyze slide HTML and create a JSON schema that captures the slide elements and their relationships. Your output should be a dictionary in JSON format, where each key-value pair strictly corresponds to the text content in a `<p>` element or the `alt` attribute of an `<img>` element.
+system_prompt: 你是提取幻灯片模式的专家。你的任务是分析幻灯片HTML并创建一个JSON模式，以捕获幻灯片元素及其关系。你的输出应该是一个JSON格式的字典，其中每个键值对严格对应于`<p>`元素中的文本内容或`<img>`元素的`alt`属性。
 template: |
-  Please analyze the slide elements and create a structured slide schema in JSON format. You should:
+  请分析幻灯片元素并以JSON格式创建一个结构化的幻灯片模式。你应该：
 
-  1. Understand the html representation of the slide, especially the style, layout, and the logical relationship between elements
+  1. 理解幻灯片的html表示，特别是样式、布局以及元素之间的逻辑关系。
 
-  2. For each element, extract the following information:
-    - "name": The role and feature of the element, such as "section/main/sub title", "content bullets/paragraph", "portrait/landscape/square image", "presenters", "dates", "acknowledgments", etc.
-    - "description": A clear description of the element's purpose, style feature(e.g. red bold bullets, small circular images), do not mention any content detail
+  2. 对于每个元素，提取以下信息：
+    - "name": 元素的作用和特征，例如“章节/主/副标题”、“内容要点/段落”、“纵向/横向/方形图片”、“演讲者”、“日期”、“致谢”等。
+    - "description": 对元素用途、样式特征（例如红色粗体项目符号、小型圆形图片）的清晰描述，不要提及任何内容细节。
     - "type": Literal["text", "image"]
     - "data": List[str]
-        * For text elements: The content of each paragraph, defined as text within `<p>` tags, must be treated as a single, distinct item.
-          - Preserve newlines (`\n`) within paragraphs, ensuring they remain intact and are not split into multiple items. Only `<p>` tags serve as separators.
-          - Do not combine multiple `<p>` tags into a single item, regardless of logical or narrative connections. Each `<p>` tag represents a separate item.
-        * For image elements: Use the `alt` attribute of the <img> tag as the data of the image
+        * 对于文本元素：每个段落的内容，定义为`<p>`标签内的文本，必须被视为一个单一、独立的项目。
+          - 保留段落内的换行符（`\n`），确保它们保持完整，不会被分割成多个项目。只有`<p>`标签作为分隔符。
+          - 不要将多个`<p>`标签合并为单个项目，无论逻辑或叙述上的联系如何。每个`<p>`标签代表一个单独的项目。
+        * 对于图片元素：使用`<img>`标签的`alt`属性作为图片的数据。
 
-  3. Do not include any empty elements, only given elements should be included
+  3. 不包括任何空元素，只应包括给定的元素。
 
-  Example Input:
+  示例输入:
   <div style="font-size: 32pt">
     <p>text0</p>
   </div>
   <div style="font-size: 14pt">
     <p>text1\ntext2\ntext3</p>
   </div>
-  <img alt="caption of image" src="pic.png">
+  <img alt="图片的标题" src="pic.png">
 
-  Example Output:
+  示例输出:
   {
-    "main title": {
-      "description": "main title of the slide",
+    "主标题": {
+      "description": "幻灯片的主标题",
       "type": "text",
       "data": ["text0"]
     },
-    "content bullets": {
-      "description": "content bullets of the slide",
+    "内容要点": {
+      "description": "幻灯片的内容要点",
       "type": "text",
       "data": ["text1\ntext2\ntext3"]
     },
-    "main image": {
-      "description": "main image of the slide",
+    "主图": {
+      "description": "幻灯片的主图",
       "type": "image",
-      "data": ["caption of image"]
+      "data": ["图片的标题"]
     }
   }
-  Example format:
+  示例格式:
   {
     "element_name": {
-      "description": "purpose of this element", # do not mention any detail, just purpose
+      "description": "此元素的目的", # 不提及任何细节，仅说明目的
       "type": "text" or "image",
       "data": ["text1", "text2"] or ["logo:...", "logo:..."]
     }
   }
-  Input:
+  输入:
   {{slide}}
 
-  Output: Please provide the slide schema in a dict of JSON format
+  输出: 请以JSON字典格式提供幻灯片模式。
 
 jinja_args:
   - slide

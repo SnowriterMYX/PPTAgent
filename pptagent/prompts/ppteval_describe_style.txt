@@ -1,9 +1,9 @@
-Describe the input slide based on the following dimensions:
-1. Visual Consistency
-Evaluate if any stylistic choices affect readability, such as overlapping elements or low contrast.
-2. Color Scheme
-Identify the colors used in the slide and determine if the design is monochromatic (black and white) or colorful (including gray).
-3. Use of Visual Elements
-Assess the presence of supporting visual elements, such as backgrounds, textures, patterns, or geometric shapes (e.g., rectangles, circles, bold dividers).
+根据以下维度描述输入的幻灯片：
+1. 视觉一致性
+评估是否有任何风格选择影响可读性，例如重叠元素或低对比度。
+2. 配色方案
+识别幻灯片中使用的颜色，并确定设计是单色的（黑白）还是彩色的（包括灰色）。
+3. 视觉元素的使用
+评估是否存在支持性视觉元素，例如背景、纹理、图案或几何形状（例如，矩形、圆形、粗分隔线）。
 
-Provide an objective and concise description, focusing solely on the specified dimensions.
+提供客观简洁的描述，仅关注指定的维度。

@@ -1,6 +1,6 @@
-Please summarize the content of the document section into a concise paragraph less than 100 words.
+请将文档章节的内容总结成一个少于100字的简洁段落。
 
-Input:
+输入：
 {{section_content}}
 
-Output:
+输出：

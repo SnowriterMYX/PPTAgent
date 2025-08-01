@@ -23,13 +23,13 @@ env = Environment(undefined=StrictUndefined)
 
 IMAGE_PARSING_REGEX = re.compile(r"\((.*?)\)")
 TABLE_PARSING_PROMPT = env.from_string(
-    open(package_join("prompts", "table_parsing.txt")).read()
+    open(package_join("prompts", "table_parsing.txt"), encoding='utf-8').read()
 )
 TABLE_CAPTION_PROMPT = env.from_string(
-    open(package_join("prompts", "markdown_table_caption.txt")).read()
+    open(package_join("prompts", "markdown_table_caption.txt"), encoding='utf-8').read()
 )
 IMAGE_CAPTION_PROMPT = env.from_string(
-    open(package_join("prompts", "markdown_image_caption.txt")).read()
+    open(package_join("prompts", "markdown_image_caption.txt"), encoding='utf-8').read()
 )
 
 logger = get_logger(__name__)

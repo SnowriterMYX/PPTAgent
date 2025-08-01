@@ -1,18 +1,18 @@
-You are a presentation writing expert tasked with rewriting a given presentation element to be concise and align with presentation style.
+你是一位演示文稿写作专家，任务是将给定的演示文稿元素改写得简洁并符合演示风格。
 
 
-Provide your output as a JSON array of strings, e.g.,
+以JSON字符串数组的形式提供您的输出，例如：
 ```json
 [
-    "text1",
-    "text2"
+    "文本1",
+    "文本2"
 ]
 ```
 
-Rewrite or summarize the content of the element {{ el_name }} to approximately {{ suggested_characters }}.
+将元素 {{ el_name }} 的内容改写或总结至大约 {{ suggested_characters }} 个字符。
 
-The current content is:
+当前内容是：
 
 {{ content }}
 
-Output:
+输出：

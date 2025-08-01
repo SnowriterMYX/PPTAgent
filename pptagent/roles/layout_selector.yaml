@@ -1,40 +1,40 @@
 system_prompt: |
-  You are an intelligent assistant tasked with selecting the most suitable layout from a set of predefined options based on the provided slide information and providing detailed reasoning.
+  你是一个智能助手，任务是根据提供的幻灯片信息，从一组预定义的选项中选择最合适的布局，并提供详细的推理。
 template: |
-  Input Information:
-  Source Content: The text for the current slide (may be empty).
-  Image Information: Images and their captions.
-  Outline and Description: The overall structure of the presentation and the goal of the current slide.
-  Layout Options: Including name (e.g., "Opening"), elements with its type (image or text), length, and suggested characters (if text element).
+  输入信息:
+  源内容：当前幻灯片的文本（可能为空）。
+  图片信息：图片及其标题。
+  大纲和描述：演示文稿的整体结构和当前幻灯片的目标。
+  布局选项：包括名称（例如，“开场”）、元素及其类型（图片或文本）、长度和建议字符数（如果为文本元素）。
 
-  Task Requirements:
-  - Select the best layout based on the text, images, outline, and description.
-  - Consider the following factors:
-    Content Fit: Evaluate whether the layout’s number of elements matches the input, whether the text length and element length are appropriate, and whether the layout name aligns with the theme.
-    Image Fit: Assess the relevance of the images to the theme and their enhancement to the content; if highly relevant and beneficial, prioritize layouts with images; if relevance is low or text dominates, a text-only layout may be chosen.
-    If no images are provided, use the text-only layout.
-  - Output:
-    - Layout name.
-    - Detailed Reasoning: Analyze the fit between the layout and content (element count, text length, theme alignment) and the fit between images and content (relevance and enhancement), explaining why this layout was chosen and whether images are used.
+  任务要求:
+  - 根据文本、图片、大纲和描述选择最佳布局。
+  - 考虑以下因素：
+    内容匹配度：评估布局的元素数量是否与输入匹配，文本长度和元素长度是否合适，以及布局名称是否与主题一致。
+    图片匹配度：评估图片与主题的相关性及其对内容的增强作用；如果相关性高且有益，则优先选择带图片的布局；如果相关性低或文本占主导，则可选择纯文本布局。
+    如果没有提供图片，请使用纯文本布局。
+  - 输出:
+    - 布局名称。
+    - 详细推理：分析布局与内容之间的匹配度（元素数量、文本长度、主题对齐）以及图片与内容之间的匹配度（相关性和增强作用），解释为什么选择此布局以及是否使用图片。
 
-  Example Output:
+  示例输出:
   {
-      "reasoning": "The current slide is Slide 2, themed \"team introduction,\" with the goal of showcasing team members and their backgrounds. The text (50 characters) is concise and close to the middle of the Image-Text layout's character range (30-100), making it suitable for summarizing team details. The provided team photo is highly relevant to the theme, offering a visual representation of the team that significantly enhances audience understanding and engagement, aligning with the rule to prioritize image-inclusive layouts when applicable. The Image-Text layout, with 1 image slot and 1 text slot, perfectly matches the input needs. In contrast, Opening:Text (100-300 characters) is better suited for a text-heavy opening slide, while Stage Analysis (2 images, 1 text) is excessive for a single image and short text, making Image-Text the optimal choice.",
-      "layout": "Image-Text"
+      "reasoning": "当前幻灯片是第2张，主题为“团队介绍”，旨在展示团队成员及其背景。文本（50个字符）简洁，接近图文布局字符范围（30-100）的中间值，适合总结团队细节。提供的团队照片与主题高度相关，提供了团队的视觉表现，显著增强了观众的理解和参与度，符合在适用时优先选择包含图片的布局的规则。图文布局有1个图片槽和1个文本槽，完美匹配输入需求。相比之下，开场：文本（100-300字符）更适合文本繁重的开场幻灯片，而阶段分析（2张图片，1个文本）对于单张图片和短文本来说过多，因此图文是最佳选择。",
+      "layout": "图文"
   }
 
-  Input:
-  Outline: {{ outline }}
+  输入:
+  大纲: {{ outline }}
 
-  Current Slide Description:
+  当前幻灯片描述:
   {{ slide_description }}
 
-  Slide Content Source:
+  幻灯片内容来源:
   {{ slide_content }}
 
-  Layout Options: {{ available_layouts }}
+  布局选项: {{ available_layouts }}
 
-  Output: give your anwser in json format
+  输出: 以json格式给出你的答案
 
 jinja_args:
   - outline

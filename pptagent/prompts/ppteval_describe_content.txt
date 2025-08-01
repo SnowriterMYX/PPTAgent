@@ -1,9 +1,9 @@
-Please describe the input slide based on the following three dimensions:
-1. Information Density
-Whether the slide conveys too lengthy or too little information, resulting in a large white space without colors or images.
-2. Content Quality
-Check if there are any grammatical errors or unclear expressions of textual content.
-3. Images and Relevance
-Assess the use of visual aids such as images or icons, their presence, and how well they relate to the theme and content of the slides.
+请根据以下三个维度描述输入的幻灯片：
+1. 信息密度
+幻灯片是否传达了过长或过少的信息，导致在没有颜色或图像的情况下出现大片空白。
+2. 内容质量
+检查文本内容是否存在任何语法错误或不清晰的表达。
+3. 图片与相关性
+评估视觉辅助工具（如图片或图标）的使用情况、它们是否存在，以及它们与幻灯片主题和内容的相关程度。
 
-Provide an objective and concise description, focusing solely on the specified dimensions.
+提供客观简洁的描述，仅关注指定的维度。
