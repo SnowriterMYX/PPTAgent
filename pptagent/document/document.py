@@ -273,6 +273,7 @@ class Document:
         vision_model: LLM,
         image_dir: str,
         table_model: Optional[LLM] = None,
+        topic: Optional[str] = None,
     ):
         """
         Create a Document from markdown content.
@@ -282,6 +283,7 @@ class Document:
             language_model (LLM): The language model.
             vision_model (LLM): The vision model.
             image_dir (str): The directory containing images.
+            topic (Optional[str]): The user-provided topic.
 
         Returns:
             Document: The created document.
@@ -318,7 +320,8 @@ class Document:
             sections.append(section)
 
         merged_metadata = language_model(
-            MERGE_METADATA_PROMPT.render(metadata=metadata_list), return_json=True
+            MERGE_METADATA_PROMPT.render(metadata=metadata_list, topic=topic),
+            return_json=True,
         )
 
         # 确保merged_metadata是字典类型
@@ -405,7 +408,9 @@ class Document:
         markdown_content = cls._format_user_input_to_markdown(user_text, title)
 
         # 使用from_markdown方法处理内容
-        return cls.from_markdown(markdown_content, language_model, vision_model, image_dir, table_model)
+        return cls.from_markdown(
+            markdown_content, language_model, vision_model, image_dir, table_model, title
+        )
 
     @staticmethod
     def _detect_file_type(file_path: str) -> str:
@@ -552,6 +557,7 @@ class Document:
         vision_model: AsyncLLM,
         image_dir: str,
         table_model: Optional[AsyncLLM] = None,
+        topic: Optional[str] = None,
     ):
         doc_extractor = AsyncAgent(
             "doc_extractor",
@@ -597,7 +603,8 @@ class Document:
                 section.summary = task2.result()
 
         merged_metadata = await language_model(
-            MERGE_METADATA_PROMPT.render(metadata=metadata), return_json=True
+            MERGE_METADATA_PROMPT.render(metadata=metadata, topic=topic),
+            return_json=True,
         )
 
         # 确保merged_metadata是字典类型
