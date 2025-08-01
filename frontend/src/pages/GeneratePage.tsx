@@ -354,14 +354,16 @@ const GeneratePage: React.FC = () => {
                 </Box>
               )}
 
-              {/* 连接状态 */}
-              <Box sx={{ mb: 3 }}>
-                <Chip
-                  label={wsRef.current?.readyState === WebSocket.OPEN ? '已连接' : '连接中断'}
-                  color={wsRef.current?.readyState === WebSocket.OPEN ? 'success' : 'warning'}
-                  size="small"
-                />
-              </Box>
+              {/* 连接状态 - 只在生成过程中显示 */}
+              {!hasError && !isCompleted && (
+                <Box sx={{ mb: 3 }}>
+                  <Chip
+                    label={wsRef.current?.readyState === WebSocket.OPEN ? '已连接' : '连接中断'}
+                    color={wsRef.current?.readyState === WebSocket.OPEN ? 'success' : 'warning'}
+                    size="small"
+                  />
+                </Box>
+              )}
             </motion.div>
           </AnimatePresence>
         </NeumorphismCard>
