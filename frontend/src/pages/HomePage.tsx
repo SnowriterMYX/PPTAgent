@@ -5,10 +5,6 @@ import {
   Typography,
   Button,
   Box,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   TextField,
   Stepper,
   Step,
@@ -18,6 +14,8 @@ import {
   useTheme,
   useMediaQuery,
   alpha,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -48,7 +46,7 @@ const HomePage: React.FC = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [pptxFiles, setPptxFiles] = useState<File[]>([]);
-  const [numberOfPages, setNumberOfPages] = useState(6);
+  const [numberOfPages, setNumberOfPages] = useState(10);
 
   // 新增：多格式文档支持
   const [documentContent, setDocumentContent] = useState<{
@@ -85,9 +83,9 @@ const HomePage: React.FC = () => {
   const validateStep = useCallback((step: number): boolean => {
     switch (step) {
       case 0: // 主题配置
-        return topic.trim().length > 0;
+        return topic.trim().length > 0 && numberOfPages >= 3 && numberOfPages <= 50;
       case 1: // 参考资料
-        return numberOfPages >= 3 && numberOfPages <= 15;
+        return true;
       case 2: // 确认
         return true;
       default:
@@ -266,6 +264,39 @@ const HomePage: React.FC = () => {
                   />
                 </Grid>
 
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    type="number"
+                    label="生成页数"
+                    placeholder="请输入页数"
+                    value={numberOfPages}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 10;
+                      if (value >= 3 && value <= 50) {
+                        setNumberOfPages(value);
+                      }
+                    }}
+                    inputProps={{
+                      min: 3,
+                      max: 50,
+                      step: 1
+                    }}
+                    error={numberOfPages < 3 || numberOfPages > 50}
+                    helperText={
+                      numberOfPages < 3 || numberOfPages > 50
+                        ? "页数范围：3-50页"
+                        : "建议页数：10-20页"
+                    }
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -280,6 +311,32 @@ const HomePage: React.FC = () => {
                         borderRadius: 2
                       }
                     }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={generateTopicContent}
+                        onChange={(e) => setGenerateTopicContent(e.target.checked)}
+                        sx={{
+                          '&.Mui-checked': {
+                            color: theme.palette.primary.main,
+                          }
+                        }}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                          自动生成主题相关内容
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          开启后，系统会根据主题自动生成相关的演示内容
+                        </Typography>
+                      </Box>
+                    }
                   />
                 </Grid>
               </Grid>
@@ -298,49 +355,18 @@ const HomePage: React.FC = () => {
                     ⚙️ 基础配置
                   </Typography>
 
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth>
-                        <InputLabel>生成页数</InputLabel>
-                        <Select
-                          value={numberOfPages}
-                          label="生成页数"
-                          onChange={(e) => setNumberOfPages(Number(e.target.value))}
-                          sx={{ borderRadius: 2 }}
-                        >
-                          {Array.from({ length: 13 }, (_, i) => i + 3).map(num => (
-                            <MenuItem key={num} value={num}>
-                              {num} 页
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-
-                    <Grid item xs={12} sm={6}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-                        <FormControl component="fieldset">
-                          <Typography variant="body2" color="text.secondary" gutterBottom>
-                            智能内容生成
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <input
-                              type="checkbox"
-                              id="generateTopicContent"
-                              checked={generateTopicContent}
-                              onChange={(e) => setGenerateTopicContent(e.target.checked)}
-                              style={{ marginRight: 8 }}
-                            />
-                            <label htmlFor="generateTopicContent">
-                              <Typography variant="body2">
-                                自动生成主题相关内容
-                              </Typography>
-                            </label>
-                          </Box>
-                        </FormControl>
-                      </Box>
-                    </Grid>
-                  </Grid>
+                  <Alert
+                    severity="info"
+                    sx={{
+                      borderRadius: 2,
+                      backgroundColor: alpha(theme.palette.info.main, 0.05),
+                      border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`
+                    }}
+                  >
+                    <Typography variant="body2">
+                      💡 基础配置已移至主题配置步骤中，您可以在第一步中设置页数和内容生成选项
+                    </Typography>
+                  </Alert>
                 </NeumorphismCard>
               </Grid>
 
