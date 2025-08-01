@@ -218,23 +218,45 @@ async def send_progress(websocket: Optional[WebSocket], status: str, progress: i
     if websocket is None:
         logger.info(f"websocket is None, status: {status}, progress: {progress}")
         return
-    await websocket.send_json({"progress": progress, "status": status})
+    try:
+        await websocket.send_json({"progress": progress, "status": status})
+    except Exception as e:
+        logger.warning(f"Failed to send progress: {e}")
+        # WebSocket已断开，不需要抛出异常
 
 
 @app.websocket("/wsapi/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    original_task_id = task_id
     task_id = task_id.replace("|", "/")
+    logger.info(f"WebSocket connection attempt: original={original_task_id}, decoded={task_id}")
+    logger.info(f"Available tasks in progress_store: {list(progress_store.keys())}")
+
     if task_id in progress_store:
         await websocket.accept()
+        active_connections[task_id] = websocket
+        logger.info(f"WebSocket connected for task: {task_id}")
+        try:
+            # 保持连接活跃，等待客户端断开或任务完成
+            while task_id in active_connections:
+                # 等待客户端消息或断开连接
+                try:
+                    message = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+                    logger.debug(f"Received message from client: {message}")
+                except asyncio.TimeoutError:
+                    # 超时是正常的，继续循环
+                    continue
+        except WebSocketDisconnect:
+            logger.info("websocket disconnected: %s", task_id)
+            active_connections.pop(task_id, None)
+        except Exception as e:
+            logger.error(f"WebSocket error for task {task_id}: {e}")
+            active_connections.pop(task_id, None)
     else:
-        raise HTTPException(status_code=404, detail="Task not found")
-    active_connections[task_id] = websocket
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        logger.info("websocket disconnected: %s", task_id)
-        active_connections.pop(task_id, None)
+        # 对于WebSocket，我们需要先接受连接然后关闭
+        await websocket.accept()
+        await websocket.close(code=1008, reason="Task not found")
+        logger.warning("WebSocket connection rejected: task %s not found in %s", task_id, list(progress_store.keys()))
 
 
 @app.get("/api/download")
@@ -289,6 +311,10 @@ async def feedback(request: Request):
 
 @app.get("/")
 async def hello():
+    return {"message": "Hello, World!"}
+
+@app.get("/api/")
+async def api_hello():
     return {"message": "Hello, World!"}
 
 
