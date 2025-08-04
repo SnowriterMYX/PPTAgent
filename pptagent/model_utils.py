@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
@@ -14,12 +15,114 @@ from marker.models import create_model_dict
 from marker.output import text_from_rendered
 from PIL import Image
 from transformers import AutoModel, AutoProcessor
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from pptagent.llms import LLM, AsyncLLM
 from pptagent.presentation import Presentation, SlidePage
 from pptagent.utils import get_logger, is_image_path, pjoin
 
 logger = get_logger(__name__)
+
+
+def setup_huggingface_cache():
+    """
+    设置Hugging Face模型缓存配置
+    """
+    # 设置缓存目录
+    cache_dir = os.environ.get('HF_HOME') or os.environ.get('TRANSFORMERS_CACHE')
+    if cache_dir:
+        os.environ['HF_HOME'] = cache_dir
+        os.environ['TRANSFORMERS_CACHE'] = cache_dir
+        logger.info(f"使用自定义缓存目录: {cache_dir}")
+
+    # 设置下载超时
+    os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'  # 10分钟超时
+
+    # 设置离线模式（如果需要）
+    offline_mode = os.environ.get('HF_HUB_OFFLINE', 'false').lower() == 'true'
+    if offline_mode:
+        os.environ['HF_HUB_OFFLINE'] = 'true'
+        logger.info("启用离线模式，仅使用本地缓存")
+
+
+def setup_requests_session():
+    """
+    设置带有重试机制的requests会话
+    """
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=5,  # 总重试次数
+        backoff_factor=2,  # 退避因子
+        status_forcelist=[429, 500, 502, 503, 504],  # 需要重试的HTTP状态码
+        allowed_methods=["HEAD", "GET", "OPTIONS"]  # 允许重试的HTTP方法
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
+def download_model_with_retry(model_name: str, max_retries: int = None, delay: int = None):
+    """
+    带重试机制的模型下载函数
+
+    Args:
+        model_name: 模型名称
+        max_retries: 最大重试次数（默认从环境变量读取）
+        delay: 重试间隔（秒，默认从环境变量读取）
+
+    Returns:
+        tuple: (processor, model) 或 None（如果失败）
+    """
+    # 从环境变量获取配置
+    if max_retries is None:
+        max_retries = int(os.environ.get('MODEL_DOWNLOAD_MAX_RETRIES', '3'))
+    if delay is None:
+        delay = int(os.environ.get('MODEL_DOWNLOAD_RETRY_DELAY', '5'))
+
+    for attempt in range(max_retries + 1):
+        try:
+            logger.info(f"尝试下载模型 {model_name}，第 {attempt + 1} 次尝试")
+
+            # 设置下载参数
+            download_kwargs = {
+                'torch_dtype': torch.float16,
+                'use_fast': True,
+                'resume_download': True,  # 支持断点续传
+                'local_files_only': False,
+            }
+
+            # 首先尝试下载processor
+            processor = AutoProcessor.from_pretrained(
+                model_name,
+                **download_kwargs
+            )
+
+            # 然后下载模型
+            model = AutoModel.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16,
+                resume_download=True,
+                local_files_only=False,
+            ).eval()
+
+            logger.info(f"成功下载模型 {model_name}")
+            return processor, model
+
+        except Exception as e:
+            logger.warning(f"下载模型 {model_name} 失败，第 {attempt + 1} 次尝试: {str(e)}")
+
+            if attempt < max_retries:
+                logger.info(f"等待 {delay} 秒后重试...")
+                time.sleep(delay)
+                delay *= 2  # 指数退避
+            else:
+                logger.error(f"下载模型 {model_name} 最终失败，已尝试 {max_retries + 1} 次")
+                raise e
+
+    return None
 
 
 class ModelManager:
@@ -44,6 +147,9 @@ class ModelManager:
             text_model_name: Text embedding model name
             env_file: Path to .env file (defaults to .env in current directory)
         """
+        # 设置Hugging Face缓存配置
+        setup_huggingface_cache()
+
         # 加载 .env 文件
         if env_file is None:
             # 查找 .env 文件的位置
@@ -180,19 +286,30 @@ def get_image_model(device: str = None):
         tuple: A tuple containing the feature extractor and the image model.
     """
     model_base = "google/vit-base-patch16-224-in21k"
-    return (
-        AutoProcessor.from_pretrained(
+
+    try:
+        # 首先尝试从本地缓存加载
+        logger.info(f"尝试从本地缓存加载模型 {model_base}")
+        processor = AutoProcessor.from_pretrained(
             model_base,
             torch_dtype=torch.float16,
             device_map=device,
             use_fast=True,
-        ),
-        AutoModel.from_pretrained(
+            local_files_only=True,  # 仅使用本地文件
+        )
+        model = AutoModel.from_pretrained(
             model_base,
             torch_dtype=torch.float16,
             device_map=device,
-        ).eval(),
-    )
+            local_files_only=True,  # 仅使用本地文件
+        ).eval()
+        logger.info(f"成功从本地缓存加载模型 {model_base}")
+        return processor, model
+
+    except Exception as e:
+        logger.info(f"本地缓存未找到模型 {model_base}，开始下载: {str(e)}")
+        # 如果本地没有，则使用重试机制下载
+        return download_model_with_retry(model_base)
 
 
 def parse_pdf(
