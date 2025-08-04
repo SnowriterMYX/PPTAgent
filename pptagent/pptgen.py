@@ -640,7 +640,8 @@ class PPTAgent(PPTGen):
                 str(feedback[1]),
             )
             logger.debug(traceback.format_exc())
-            if error_idx == self.retry_times:
+            if error_idx == self.retry_times - 1:
+                logger.error(f"Failed to generate slide after {self.retry_times} attempts. Last error: {feedback[1]}")
                 raise Exception(
                     f"Failed to generate slide, tried too many times at editing\ntraceback: {feedback[1]}"
                 )
@@ -846,7 +847,8 @@ class PPTAgentAsync(PPTGenAsync):
                 self.retry_times,
                 str(feedback[1]),
             )
-            if error_idx == self.retry_times:
+            if error_idx == self.retry_times - 1:
+                logger.error(f"Failed to generate slide after {self.retry_times} attempts. Last error: {feedback[1]}")
                 raise Exception(
                     f"Failed to generate slide, tried too many times at editing\ntraceback: {feedback[1]}"
                 )

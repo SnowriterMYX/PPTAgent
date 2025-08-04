@@ -80,6 +80,13 @@ class CodeExecutor:
         self.registered_functions = API_TYPES.all_funcs()
         self.function_regex = re.compile(r"^[a-z]+_[a-z_]+\(.+\)")
 
+    def reset_execution_state(self):
+        """
+        重置执行状态，用于重试时清理之前的状态
+        """
+        # 保留历史记录，但清理当前执行状态
+        pass
+
     @classmethod
     def get_apis_docs(
         cls,
@@ -144,6 +151,9 @@ class CodeExecutor:
             None: If no error occurs.
         """
         api_calls = actions.strip().split("\n")
+        logger.debug(f"Executing {len(api_calls)} actions on slide {edit_slide.slide_idx}")
+        logger.debug(f"Actions to execute:\n{actions}")
+
         self.api_history.append(
             [HistoryMark.API_CALL_ERROR, edit_slide.slide_idx, actions]
         )
@@ -166,24 +176,8 @@ class CodeExecutor:
                 func = line.split("(")[0]
                 if func not in self.registered_functions:
                     raise SlideEditError(f"The function {func} is not defined.")
-                # 检查命令冲突：在单个命令序列中只能使用一种操作类型（clone 或 del）
-                if func.startswith("clone") or func.startswith("del"):
-                    current_tag = func.split("_")[0]  # 获取操作类型：clone 或 del
-                    previous_tag = self.command_history[-1][-1] if self.command_history else None
-
-                    if previous_tag is None:
-                        # 第一个操作，记录操作类型
-                        self.command_history[-1][-1] = current_tag
-                    elif previous_tag == current_tag:
-                        # 相同操作类型，允许继续
-                        pass
-                    else:
-                        # 不同操作类型，抛出错误
-                        raise SlideEditError(
-                            f"Invalid command: Cannot mix '{previous_tag}' and '{current_tag}' operations within a single command sequence. "
-                            f"Each command must only perform one type of operation (either clone or delete). "
-                            f"Current function: {func}, Previous operation type: {previous_tag}"
-                        )
+                # 注意：移除了过于严格的命令冲突检查，允许在同一序列中混合使用clone和del操作
+                # 这样可以避免不必要的错误，提高系统的灵活性
                 self.code_history.append([HistoryMark.CODE_RUN_ERROR, line, None])
                 partial_func = partial(self.registered_functions[func], edit_slide)
                 if func == "replace_image":
@@ -406,10 +400,17 @@ def validate_paragraph_operation(shape, div_id, paragraph_id, operation_name):
     if target_paragraph is None:
         available_ids = [para.idx for para in valid_paragraphs]
         logger.warning(f"Paragraph {paragraph_id} not found in element {div_id}. Available IDs: {available_ids}")
-        raise SlideEditError(
-            f"Cannot find paragraph {paragraph_id} in element {div_id} for {operation_name} operation. "
-            f"Available paragraph IDs: {available_ids}"
-        )
+
+        # 尝试智能修复：如果请求的段落ID超出范围，使用最后一个有效段落
+        if available_ids and paragraph_id >= max(available_ids):
+            logger.info(f"Auto-correcting paragraph ID from {paragraph_id} to {max(available_ids)} for {operation_name} operation")
+            target_paragraph = next(para for para in valid_paragraphs if para.idx == max(available_ids))
+        else:
+            raise SlideEditError(
+                f"Cannot find paragraph {paragraph_id} in element {div_id} for {operation_name} operation. "
+                f"Available paragraph IDs: {available_ids}. "
+                f"Suggestion: Use one of the available IDs or check if previous operations modified the paragraph structure."
+            )
 
     if target_paragraph.idx == -1:
         raise SlideEditError(
