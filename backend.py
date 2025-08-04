@@ -5,6 +5,8 @@ import json
 import os
 import signal
 import sys
+import threading
+import time
 import traceback
 import uuid
 
@@ -73,11 +75,25 @@ models = ModelManager()
 
 # 全局变量用于优雅关闭
 shutdown_event = asyncio.Event()
+_shutdown_in_progress = False
 
 def signal_handler(signum, frame):
     """处理 Ctrl+C 信号"""
+    global _shutdown_in_progress
+    if _shutdown_in_progress:
+        print(f"\n⚠️  已在关闭中，请稍等...")
+        return
+
+    _shutdown_in_progress = True
     print(f"\n🛑 接收到信号 {signum}，正在优雅关闭服务...")
     shutdown_event.set()
+
+    # 如果在主线程中，可以直接退出
+    if threading.current_thread() is threading.main_thread():
+        # 给一些时间让清理完成
+        time.sleep(2)
+        print("🔄 强制退出...")
+        os._exit(0)
 
 # 注册信号处理器
 signal.signal(signal.SIGINT, signal_handler)
@@ -106,19 +122,35 @@ async def lifespan(_: FastAPI):
     # 优雅关闭处理
     print("🔄 正在清理资源...")
     try:
-        # 清理模型资源
-        if hasattr(models, 'cleanup'):
-            await models.cleanup()
+        # 设置清理超时时间
+        cleanup_timeout = 10  # 10秒超时
 
-        # 等待所有活跃连接关闭
+        # 清理模型资源（带超时）
+        if hasattr(models, 'cleanup'):
+            try:
+                await asyncio.wait_for(models.cleanup(), timeout=cleanup_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("模型清理超时，强制继续")
+            except Exception as e:
+                logger.error(f"模型清理出错: {e}")
+
+        # 等待所有活跃连接关闭（带超时）
         if active_connections:
             print(f"⏳ 等待 {len(active_connections)} 个活跃连接关闭...")
+            close_tasks = []
             for task_id, websocket in list(active_connections.items()):
+                if websocket:
+                    close_tasks.append(websocket.close())
+
+            if close_tasks:
                 try:
-                    if websocket:
-                        await websocket.close()
-                except Exception as e:
-                    logger.debug(f"关闭WebSocket连接时出错: {e}")
+                    await asyncio.wait_for(
+                        asyncio.gather(*close_tasks, return_exceptions=True),
+                        timeout=5
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("WebSocket连接关闭超时")
+
             active_connections.clear()
 
         print("✅ 资源清理完成")
@@ -897,17 +929,11 @@ async def ppt_gen(task_id: str, rerun=False):
 if __name__ == "__main__":
     import uvicorn
 
-    try:
-        ip = "0.0.0.0"
-        print("🚀 启动PPTAgent后端服务...")
-        print(f"🌐 服务地址: http://{ip}:9297")
-        print("📝 使用 Ctrl+C 停止服务")
-        print("=" * 50)
-
-        # 配置 uvicorn 以更好地处理关闭信号
-        uvicorn.run(
+    async def run_server():
+        """异步运行服务器"""
+        config = uvicorn.Config(
             app,
-            host=ip,
+            host="0.0.0.0",
             port=9297,
             log_level="info",
             access_log=True,
@@ -915,11 +941,40 @@ if __name__ == "__main__":
             timeout_keep_alive=5,
             timeout_graceful_shutdown=10,
         )
+        server = uvicorn.Server(config)
+
+        # 监听关闭事件
+        async def shutdown_monitor():
+            await shutdown_event.wait()
+            print("� 开始关闭服务器...")
+            server.should_exit = True
+
+        # 启动关闭监听器
+        shutdown_task = asyncio.create_task(shutdown_monitor())
+
+        try:
+            await server.serve()
+        finally:
+            shutdown_task.cancel()
+            try:
+                await shutdown_task
+            except asyncio.CancelledError:
+                pass
+
+    try:
+        ip = "0.0.0.0"
+        print("🚀 启动PPTAgent后端服务...")
+        print(f"🌐 服务地址: http://{ip}:9297")
+        print("📝 使用 Ctrl+C 停止服务")
+        print("=" * 50)
+
+        # 运行异步服务器
+        asyncio.run(run_server())
+
     except KeyboardInterrupt:
         print("\n🛑 接收到中断信号，正在停止服务...")
     except Exception as e:
         print(f"❌ 服务器启动失败: {e}")
-        import traceback
         traceback.print_exc()
     finally:
         print("👋 PPTAgent后端服务已停止")

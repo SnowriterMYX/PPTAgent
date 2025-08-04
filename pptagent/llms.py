@@ -423,16 +423,23 @@ class AsyncLLM(LLM):
             api_key=self.api_key,
             timeout=self.timeout,
         )
-        try:
-            self.batch = Auto(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=self.timeout,
-                loglevel=0,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize batch client: {e}")
-            self.batch = None
+        # 暂时禁用 batch 功能以避免 oaib 库的 _last_tick 错误
+        # 这个错误会导致 Ctrl+C 无法正常停止服务
+        self.batch = None
+        self.use_batch = False
+        logger.debug("Batch functionality disabled to avoid oaib library issues")
+
+        # 如果需要启用 batch 功能，可以取消注释以下代码：
+        # try:
+        #     self.batch = Auto(
+        #         base_url=self.base_url,
+        #         api_key=self.api_key,
+        #         timeout=self.timeout,
+        #         loglevel=0,
+        #     )
+        # except Exception as e:
+        #     logger.warning(f"Failed to initialize batch client: {e}")
+        #     self.batch = None
 
     @tenacity_decorator
     async def __call__(
@@ -460,21 +467,12 @@ class AsyncLLM(LLM):
         Returns:
             Union[str, Dict, List, Tuple]: The response from the model.
         """
-        if self.use_batch and threading.current_thread() is threading.main_thread():
-            try:
-                self.batch = Auto(
-                    base_url=self.base_url,
-                    api_key=self.api_key,
-                    timeout=self.timeout,
-                    loglevel=0,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to initialize batch client: {e}")
-                self.batch = None
-        elif self.use_batch:
-            logger.warning(
-                "Warning: AsyncLLM is not running in the main thread, may cause race condition."
-            )
+        # Batch 功能已被禁用以避免 oaib 库的 _last_tick 错误
+        # 这确保了 Ctrl+C 可以正常停止服务
+        if self.use_batch:
+            logger.debug("Batch functionality is disabled to avoid oaib library issues")
+            self.use_batch = False
+            self.batch = None
         # 记录请求开始时间
         start_time = time.time()
 
@@ -568,16 +566,22 @@ class AsyncLLM(LLM):
             api_key=self.api_key,
             timeout=self.timeout,
         )
-        try:
-            self.batch = Auto(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=self.timeout,
-                loglevel=0,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize batch client: {e}")
-            self.batch = None
+        # 暂时禁用 batch 功能以避免 oaib 库的 _last_tick 错误
+        self.batch = None
+        self.use_batch = False
+        logger.debug("Batch functionality disabled during deserialization to avoid oaib library issues")
+
+        # 如果需要启用 batch 功能，可以取消注释以下代码：
+        # try:
+        #     self.batch = Auto(
+        #         base_url=self.base_url,
+        #         api_key=self.api_key,
+        #         timeout=self.timeout,
+        #         loglevel=0,
+        #     )
+        # except Exception as e:
+        #     logger.warning(f"Failed to initialize batch client: {e}")
+        #     self.batch = None
 
     async def cleanup(self):
         """
@@ -586,13 +590,30 @@ class AsyncLLM(LLM):
         try:
             if hasattr(self, 'batch') and self.batch is not None:
                 # 尝试优雅关闭 batch 客户端
-                if hasattr(self.batch, 'stop'):
-                    await self.batch.stop()
-                elif hasattr(self.batch, 'close'):
-                    await self.batch.close()
-                self.batch = None
+                try:
+                    if hasattr(self.batch, 'stop'):
+                        await self.batch.stop()
+                    elif hasattr(self.batch, 'close'):
+                        await self.batch.close()
+                except AttributeError as ae:
+                    # 处理 oaib 库的 _last_tick 属性错误
+                    if "'Auto' object has no attribute '_last_tick'" in str(ae):
+                        logger.debug(f"oaib 库内部错误，强制清理 batch 客户端: {ae}")
+                        # 直接设置为 None，跳过有问题的清理方法
+                        self.batch = None
+                    else:
+                        raise ae
+                except Exception as e:
+                    logger.debug(f"batch 客户端清理过程中出现其他错误: {e}")
+                    # 强制设置为 None
+                    self.batch = None
+                else:
+                    # 正常清理完成
+                    self.batch = None
         except Exception as e:
             logger.debug(f"清理 batch 客户端时出错: {e}")
+            # 确保 batch 被设置为 None
+            self.batch = None
 
         try:
             if hasattr(self, 'client') and self.client is not None:
