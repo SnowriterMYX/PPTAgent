@@ -79,13 +79,45 @@ class CodeExecutor:
         self.retry_times = retry_times
         self.registered_functions = API_TYPES.all_funcs()
         self.function_regex = re.compile(r"^[a-z]+_[a-z_]+\(.+\)")
+        # 段落状态跟踪
+        self.paragraph_state = {}  # {element_id: {paragraph_id: status}}
 
     def reset_execution_state(self):
         """
         重置执行状态，用于重试时清理之前的状态
         """
         # 保留历史记录，但清理当前执行状态
-        pass
+        self.paragraph_state.clear()
+
+    def update_paragraph_state(self, element_id: int, paragraph_id: int, operation: str):
+        """
+        更新段落状态跟踪
+
+        Args:
+            element_id (int): 元素ID
+            paragraph_id (int): 段落ID
+            operation (str): 操作类型 (clone, delete, replace)
+        """
+        if element_id not in self.paragraph_state:
+            self.paragraph_state[element_id] = {}
+
+        self.paragraph_state[element_id][paragraph_id] = operation
+        logger.debug(f"Updated paragraph state: element {element_id}, paragraph {paragraph_id}, operation: {operation}")
+
+    def get_available_paragraph_ids(self, element_id: int) -> list[int]:
+        """
+        获取指定元素的可用段落ID列表
+
+        Args:
+            element_id (int): 元素ID
+
+        Returns:
+            list[int]: 可用的段落ID列表
+        """
+        if element_id not in self.paragraph_state:
+            return []
+
+        return [pid for pid, status in self.paragraph_state[element_id].items() if status != 'deleted']
 
     @classmethod
     def get_apis_docs(
@@ -403,9 +435,43 @@ def validate_paragraph_operation(shape, div_id, paragraph_id, operation_name):
 
         # 尝试智能修复：如果请求的段落ID超出范围，使用最后一个有效段落
         if available_ids and paragraph_id >= max(available_ids):
-            logger.info(f"Auto-correcting paragraph ID from {paragraph_id} to {max(available_ids)} for {operation_name} operation")
-            target_paragraph = next(para for para in valid_paragraphs if para.idx == max(available_ids))
+            corrected_id = max(available_ids)
+            logger.warning(f"Paragraph ID {paragraph_id} not found in element {div_id}. Available IDs: {available_ids}")
+            logger.info(f"Auto-correcting paragraph ID from {paragraph_id} to {corrected_id} for {operation_name} operation")
+            logger.info(f"This suggests the AI model may have miscalculated paragraph indices. Consider reviewing the prompt template.")
+
+            # 记录到调试监控器
+            try:
+                from pptagent.debug_tools import get_paragraph_monitor
+                monitor = get_paragraph_monitor()
+                monitor.record_issue(
+                    slide_idx=getattr(shape, 'slide_idx', -1),
+                    element_id=div_id,
+                    requested_id=paragraph_id,
+                    available_ids=available_ids,
+                    operation=operation_name,
+                    corrected_id=corrected_id
+                )
+            except ImportError:
+                pass  # 调试工具不可用时忽略
+
+            target_paragraph = next(para for para in valid_paragraphs if para.idx == corrected_id)
         else:
+            # 记录失败的操作
+            try:
+                from pptagent.debug_tools import get_paragraph_monitor
+                monitor = get_paragraph_monitor()
+                monitor.record_issue(
+                    slide_idx=getattr(shape, 'slide_idx', -1),
+                    element_id=div_id,
+                    requested_id=paragraph_id,
+                    available_ids=available_ids,
+                    operation=operation_name,
+                    error_message=f"Paragraph {paragraph_id} not found"
+                )
+            except ImportError:
+                pass
+
             raise SlideEditError(
                 f"Cannot find paragraph {paragraph_id} in element {div_id} for {operation_name} operation. "
                 f"Available paragraph IDs: {available_ids}. "
@@ -536,6 +602,9 @@ def clone_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
     Raises:
         SlideEditError: If the paragraph is not found.
 
+    Returns:
+        int: The ID of the newly cloned paragraph.
+
     Mention: the cloned paragraph will have a paragraph_id one greater than the current maximum in the parent element.
     """
     shape = element_index(slide, div_id)
@@ -547,7 +616,8 @@ def clone_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
 
     # 克隆段落
     cloned_para = deepcopy(target_paragraph)
-    cloned_para.idx = max_idx + 1
+    new_paragraph_id = max_idx + 1
+    cloned_para.idx = new_paragraph_id
     cloned_para.real_idx = len(shape.text_frame.paragraphs)
 
     shape.text_frame.paragraphs.append(cloned_para)
@@ -557,6 +627,11 @@ def clone_paragraph(slide: SlidePage, div_id: int, paragraph_id: int):
             target_paragraph.real_idx,
         )
     )
+
+    # 记录克隆操作的详细信息
+    logger.info(f"Successfully cloned paragraph {paragraph_id} in element {div_id}. New paragraph ID: {new_paragraph_id}")
+
+    return new_paragraph_id
 
 
 def replace_image_with_table(shape: Picture, doc: Document, image_path: str):

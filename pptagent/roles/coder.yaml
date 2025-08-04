@@ -12,15 +12,20 @@ template: |
     步骤
         1.	数量调整:
         -	如果 quantity_change = 0，则仅修改内容。
-        -	如果 quantity_change > 0，使用 `clone_paragraph` 从相同的 `element_class` 中添加指定数量的段落。新克隆段落的 `paragraph_id` 应为父元素当前最大 `paragraph_id` 加 1。
+        -	如果 quantity_change > 0，使用 `clone_paragraph` 从相同的 `element_class` 中添加指定数量的段落。
         -	如果 quantity_change < 0，使用 `del_paragraph` 或 `del_image` 删除指定数量的末尾元素。
         -	每个命令的API调用组必须根据 `quantity_change` 独占地使用 `clone_paragraph` 或 `del_paragraph`/`del_image`。
         2.	内容修改:
         -	文本内容：使用 `replace_paragraph` 修改内容。
         -	图片内容：使用 `replace_image` 替换图片资源。
-        3.	输出格式:
+        3.	段落ID规则（重要）:
+        -	**严格使用HTML中显示的现有段落ID**，不要推测或计算新的ID。
+        -	对于 `clone_paragraph` 操作：只需克隆现有段落，系统会自动分配新的段落ID。
+        -	对于 `replace_paragraph` 操作：只使用HTML中明确显示的段落ID（如 `<p id="0">`, `<p id="1">` 等）。
+        -	**禁止使用HTML中不存在的段落ID**，即使逻辑上认为应该存在。
+        4.	输出格式:
         -	为每个API调用组添加注释，解释原始命令的意图和相关的 `element_class`。
-        -	对于克隆操作，请注释新创建段落的 `paragraph_id`。
+        -	对于克隆操作，注释说明克隆的源段落ID，但不要预测新段落的ID。
 
     示例输入:
 
@@ -55,9 +60,9 @@ template: |
     replace_paragraph(0, 0, "新标题")
 
     # ("project_description", "text", "quantity_change: 1", ["为期两年的项目，旨在推进FAIR原则的实施"], ["新项目描述1", "新项目描述2"])
-    clone_paragraph(1, 0)  # 新克隆的段落id为2，因为当前最大段落id为1
-    replace_paragraph(1, 0, "新项目描述1")
-    replace_paragraph(1, 2, "新项目描述2")
+    clone_paragraph(1, 0)  # 克隆元素1中的段落0，系统会自动分配新段落ID
+    replace_paragraph(1, 0, "新项目描述1")  # 替换原有段落0
+    # 注意：新克隆的段落ID由系统自动分配，不要在此处使用未确认的ID
 
     # ("funding_info", "text", "quantity_change: -1", ["由欧盟资助"], [])
     del_paragraph(1, 1)
