@@ -716,12 +716,13 @@ class OutlineItem:
                 document.sections, key=lambda x: edit_distance(x.title, sec_key)
             )
             self.indexs[section.title] = self.indexs.pop(sec_key)
-            if edit_distance(section.title, sec_key) < sim_bound:
+            similarity_score = edit_distance(section.title, sec_key)
+            if similarity_score < sim_bound:
                 logger.warning(
-                    f"section not found: {sec_key}, available sections: {[section.title for section in document.sections]}.",
+                    f"section not found: {sec_key}, available sections: {[section.title for section in document.sections]}. Best match: '{section.title}' with similarity: {similarity_score:.3f} (threshold: {sim_bound})",
                 )
                 raise ValueError(
-                    f"section not found: {sec_key}, available sections: {[section.title for section in document.sections]}."
+                    f"section not found: {sec_key}, available sections: {[section.title for section in document.sections]}. Best match: '{section.title}' with similarity: {similarity_score:.3f} (threshold: {sim_bound})"
                 )
             for idx in range(len(subsec_keys)):
                 subsection = max(
@@ -729,9 +730,10 @@ class OutlineItem:
                     key=lambda x: edit_distance(x.title, subsec_keys[idx]),
                 )
                 self.indexs[section.title][idx] = subsection.title
-                if edit_distance(subsection.title, subsec_keys[idx]) < sim_bound:
+                subsection_similarity = edit_distance(subsection.title, subsec_keys[idx])
+                if subsection_similarity < sim_bound:
                     raise ValueError(
-                        f"subsection {subsec_keys[idx]} not found in section {section.title}, available subsections: {[subsection.title for subsection in section.subsections]}."
+                        f"subsection '{subsec_keys[idx]}' not found in section '{section.title}', available subsections: {[subsection.title for subsection in section.subsections]}. Best match: '{subsection.title}' with similarity: {subsection_similarity:.3f} (threshold: {sim_bound})"
                     )
 
     def check_images(self, document: Document, text_model: LLM, sim_bound: float):

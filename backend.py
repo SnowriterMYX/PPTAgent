@@ -874,6 +874,7 @@ async def ppt_gen(task_id: str, rerun=False):
             models.vision_model,
             error_exit=False,
             retry_times=5,
+            sim_bound=0.2,  # 降低相似度阈值以处理章节匹配问题
         )
         ppt_agent.set_reference(
             config=generation_config,
