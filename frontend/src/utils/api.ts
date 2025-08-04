@@ -31,27 +31,33 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('Response Error:', error);
-    
+
+    // 保留原始错误代码，特别是 ERR_BLOCKED_BY_CLIENT
+    const originalCode = error.code;
+
     // 统一错误处理
     if (error.response) {
       // 服务器返回错误状态码
       const { status, data } = error.response;
-      switch (status) {
-        case 400:
-          throw new Error(data.detail || '请求参数错误');
-        case 404:
-          throw new Error(data.detail || '请求的资源不存在');
-        case 500:
-          throw new Error(data.detail || '服务器内部错误');
-        default:
-          throw new Error(data.detail || `请求失败 (${status})`);
-      }
+      const newError = new Error(data.detail || `请求失败 (${status})`);
+      (newError as any).code = originalCode;
+      (newError as any).response = error.response;
+      throw newError;
     } else if (error.request) {
-      // 网络错误
-      throw new Error('网络连接失败，请检查网络设置');
+      // 网络错误 - 保留原始错误代码
+      if (originalCode === 'ERR_BLOCKED_BY_CLIENT') {
+        // 直接抛出原始错误，保持所有属性
+        throw error;
+      }
+      const newError = new Error('网络连接失败，请检查网络设置');
+      (newError as any).code = originalCode;
+      (newError as any).request = error.request;
+      throw newError;
     } else {
       // 其他错误
-      throw new Error(error.message || '未知错误');
+      const newError = new Error(error.message || '未知错误');
+      (newError as any).code = originalCode;
+      throw newError;
     }
   }
 );
@@ -135,12 +141,41 @@ export const apiService = {
   },
 
   // 下载生成的PPT
-  downloadPPT: async (taskId: string): Promise<Blob> => {
-    const response = await api.get('/download', {
-      params: { task_id: taskId },
-      responseType: 'blob',
-    });
-    return response.data;
+  downloadPPT: async (taskId: string): Promise<Blob | 'BLOCKED_BY_CLIENT'> => {
+    console.log('开始下载PPT，任务ID:', taskId);
+    try {
+      const response = await api.get('/download', {
+        params: { task_id: taskId },
+        responseType: 'blob',
+        timeout: 60000, // 增加超时时间到60秒
+      });
+      console.log('下载响应:', response.status, response.headers);
+      return response.data;
+    } catch (error: any) {
+      console.error('下载PPT失败，详细错误:', error);
+      console.log('错误代码:', error?.code);
+      console.log('错误消息:', error?.message);
+      console.log('请求状态:', error?.request?.status);
+      console.log('响应状态:', error?.response?.status);
+
+      // 检查是否是下载管理器接管的情况
+      // 1. 直接的 ERR_BLOCKED_BY_CLIENT
+      // 2. ERR_NETWORK 且没有响应状态（通常是被拦截）
+      // 3. 请求状态为0且没有响应（被浏览器扩展阻止）
+      // 4. 检查错误堆栈中是否包含 ERR_BLOCKED_BY_CLIENT
+      // 5. 检查错误的原始对象
+      const isBlockedByClient = error?.code === 'ERR_BLOCKED_BY_CLIENT' ||
+                               (error?.code === 'ERR_NETWORK' && !error?.response && error?.request?.status === 0) ||
+                               (error?.stack && error.stack.includes('ERR_BLOCKED_BY_CLIENT')) ||
+                               (error?.name === 'AxiosError' && error?.message === 'Network Error' && !error?.response);
+
+      if (isBlockedByClient) {
+        console.log('下载被下载管理器接管，这是正常行为');
+        return 'BLOCKED_BY_CLIENT';
+      }
+
+      throw error;
+    }
   },
 
   // 提交反馈
@@ -176,7 +211,7 @@ export class WebSocketManager {
   connect(): void {
     try {
       // 在开发环境中直接连接到后端WebSocket
-      const isDev = import.meta.env.DEV;
+      const isDev = (import.meta as any).env?.DEV;
       // 对taskId进行URL编码，确保特殊字符正确传输
       const encodedTaskId = encodeURIComponent(this.taskId);
       const wsUrl = isDev

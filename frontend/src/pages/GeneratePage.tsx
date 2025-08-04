@@ -37,7 +37,7 @@ import { useNavigate } from 'react-router-dom';
 import NeumorphismCard from '@/components/common/NeumorphismCard';
 import { useAppStore, useNotificationStore } from '@/store/appStore';
 import { apiService } from '@/utils/api';
-import { TaskStatus } from '@/types';
+
 
 // 时间格式化工具函数
 const formatDuration = (ms: number): string => {
@@ -66,7 +66,6 @@ const GeneratePage: React.FC = () => {
   // 本地状态 - 简化版本，类似Vue实现
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('Starting...');
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -109,7 +108,12 @@ const GeneratePage: React.FC = () => {
 
         if (data.progress >= 100) {
           closeSocket();
-          fetchDownloadLink();
+          // 不再自动获取下载链接，等待用户点击下载按钮
+          addNotification({
+            type: 'success',
+            title: '生成完成',
+            message: 'PPT已成功生成，点击下载按钮即可下载！',
+          });
         }
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
@@ -152,54 +156,63 @@ const GeneratePage: React.FC = () => {
     };
   }, [currentTask, navigate]);
 
-  // 获取下载链接
-  const fetchDownloadLink = async () => {
-    if (!taskId || downloadUrl) return;
-
-    try {
-      const blob = await apiService.downloadPPT(taskId);
-      const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
-
-      addNotification({
-        type: 'success',
-        title: '生成完成',
-        message: 'PPT已成功生成，可以下载了！',
-      });
-    } catch (error) {
-      console.error("Download error:", error);
-      setStatusMessage(prev => prev + '\nFailed to continue the task.');
-      setError('下载准备失败');
-    }
-  };
-
-  // 下载文件
+  // 直接下载文件（用户点击时触发）
   const handleDownload = async () => {
-    if (!downloadUrl || !taskId) return;
+    if (!taskId) return;
 
     setIsDownloading(true);
     try {
+      console.log('用户点击下载，开始获取文件，任务ID:', taskId);
+      const result = await apiService.downloadPPT(taskId);
+
+      if (result === 'BLOCKED_BY_CLIENT') {
+        // 下载被下载管理器接管，这是正常情况
+        console.log('下载被下载管理器（如IDM）接管，文件应该已开始下载');
+        addNotification({
+          type: 'success',
+          title: '下载已开始',
+          message: '文件已由下载管理器接管，请查看下载进度',
+        });
+        return;
+      }
+
+      console.log('成功获取文件blob，大小:', result.size);
+
+      // 创建下载链接并触发下载
+      const url = URL.createObjectURL(result);
       const filename = `PPTAgent_${taskId.replace(/[/|]/g, '_')}.pptx`;
 
-      // 创建下载链接
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = url;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       addNotification({
         type: 'success',
         title: '下载成功',
         message: 'PPT文件已保存到您的设备',
       });
-    } catch (error) {
-      console.error('Download failed:', error);
+    } catch (error: any) {
+      console.error("Download error:", error);
+
+      // 简化的错误处理
+      let errorMessage = '下载失败';
+
+      if (error?.message?.includes('网络连接失败')) {
+        errorMessage = '网络连接失败，请检查网络设置或稍后重试';
+      } else if (error?.response?.status === 404) {
+        errorMessage = '文件未找到，可能生成过程中出现问题';
+      } else if (error?.response?.status >= 500) {
+        errorMessage = '服务器错误，请稍后重试';
+      }
+
       addNotification({
         type: 'error',
         title: '下载失败',
-        message: '文件下载失败，请重试',
+        message: errorMessage,
       });
     } finally {
       setIsDownloading(false);
@@ -304,7 +317,7 @@ const GeneratePage: React.FC = () => {
       };
     }
 
-    if (progress >= 100 || downloadUrl) {
+    if (progress >= 100) {
       return {
         color: 'success' as const,
         icon: <CheckCircleIcon />,
@@ -322,7 +335,7 @@ const GeneratePage: React.FC = () => {
   };
 
   const statusInfo = getStatusInfo();
-  const isCompleted = progress >= 100 || downloadUrl;
+  const isCompleted = progress >= 100;
   const hasError = !!error;
 
   if (!currentTask) {
@@ -451,7 +464,7 @@ const GeneratePage: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           {/* 下载按钮 */}
           <AnimatePresence>
-            {isCompleted && downloadUrl && (
+            {isCompleted && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
