@@ -37,8 +37,6 @@ class ParagraphIDMonitor:
     def __init__(self):
         self.issues: List[ParagraphIDIssue] = []
         self.statistics = {
-            'total_operations': 0,
-            'successful_operations': 0,
             'auto_corrected_operations': 0,
             'failed_operations': 0,
             'most_common_issues': {}
@@ -70,15 +68,12 @@ class ParagraphIDMonitor:
         logger.warning(f"Paragraph ID issue recorded: {issue}")
     
     def _update_statistics(self, issue: ParagraphIDIssue):
-        """更新统计信息"""
-        self.statistics['total_operations'] += 1
-        
+        """更新统计信息 - 只统计问题，不统计成功操作"""
+        # 只有真正的问题才会被记录，所以这里只统计问题类型
         if issue.corrected_id is not None:
             self.statistics['auto_corrected_operations'] += 1
         elif issue.error_message:
             self.statistics['failed_operations'] += 1
-        else:
-            self.statistics['successful_operations'] += 1
         
         # 记录常见问题模式
         issue_pattern = f"requested_{issue.requested_id}_available_{max(issue.available_ids) if issue.available_ids else 'none'}"
@@ -98,17 +93,17 @@ class ParagraphIDMonitor:
     def _generate_recommendations(self) -> List[str]:
         """生成改进建议"""
         recommendations = []
-        
+
         if self.statistics['auto_corrected_operations'] > 0:
             recommendations.append(
-                "检测到段落ID自动修正，建议检查AI模型的段落ID计算逻辑"
+                f"检测到{self.statistics['auto_corrected_operations']}次段落ID自动修正，建议检查AI模型的段落ID计算逻辑"
             )
-        
-        if self.statistics['failed_operations'] > self.statistics['total_operations'] * 0.1:
+
+        if self.statistics['failed_operations'] > 0:
             recommendations.append(
-                "失败操作比例较高，建议优化段落ID验证机制"
+                f"检测到{self.statistics['failed_operations']}次操作失败，建议优化段落ID验证机制"
             )
-        
+
         # 分析常见问题模式
         common_issues = self.statistics['most_common_issues']
         if common_issues:
@@ -116,7 +111,10 @@ class ParagraphIDMonitor:
             recommendations.append(
                 f"最常见的问题模式: {most_common[0]}，出现{most_common[1]}次"
             )
-        
+
+        if not self.issues:
+            recommendations.append("未检测到段落ID相关问题")
+
         return recommendations
     
     def export_to_file(self, filepath: str):
